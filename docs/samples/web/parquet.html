@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Technical Notes - Filament</title>
+        <title>parquet - Filament</title>
 
 
         <!-- Custom HTML head -->
@@ -12,19 +12,19 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
-        <link rel="shortcut icon" href="../favicon.png">
-        <link rel="stylesheet" href="../css/variables.css">
-        <link rel="stylesheet" href="../css/general.css">
-        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="shortcut icon" href="../../favicon.png">
+        <link rel="stylesheet" href="../../css/variables.css">
+        <link rel="stylesheet" href="../../css/general.css">
+        <link rel="stylesheet" href="../../css/chrome.css">
 
         <!-- Fonts -->
-        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
-        <link rel="stylesheet" href="../fonts/fonts.css">
+        <link rel="stylesheet" href="../../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../../fonts/fonts.css">
 
         <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" href="../highlight.css">
-        <link rel="stylesheet" href="../tomorrow-night.css">
-        <link rel="stylesheet" href="../ayu-highlight.css">
+        <link rel="stylesheet" href="../../highlight.css">
+        <link rel="stylesheet" href="../../tomorrow-night.css">
+        <link rel="stylesheet" href="../../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
 
@@ -33,11 +33,11 @@
 
         <!-- Provide site root to javascript -->
         <script>
-            var path_to_root = "../";
+            var path_to_root = "../../";
             var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "light";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc.js"></script>
+        <script src="../../toc.js"></script>
     </head>
     <body>
     <div id="body-container">
@@ -87,12 +87,12 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div style="display:flex;align-items:center;justify-content:center">
-                <img class="flogo" src="../images/filament_logo_small.png"></img>
+                <img class="flogo" src="../../images/filament_logo_small.png"></img>
             </div>
             <!-- populated by js -->
             <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
             <noscript>
-                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+                <iframe class="sidebar-iframe-outer" src="../../toc.html"></iframe>
             </noscript>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -158,18 +158,116 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="technical-notes"><a class="header" href="#technical-notes">Technical Notes</a></h1>
-<p>Documents that pertain to components and use cases of the project.</p>
+                        <style>
+body { margin: 0; overflow: hidden; }
+canvas { touch-action: none; width: 100%; height: 400px; border: 1px solid black; }
+</style>
+<p><canvas></canvas></p>
+<script src="../../web/lib/filament.js"></script>
+<script src="../../web/lib/gl-matrix-min.js"></script>
+<script>
+const iblfile = '../../web/assets/parquet/default_env/default_env_ibl.ktx';
+const skyfile = '../../web/assets/parquet/default_env/default_env_skybox.ktx';
+Filament.init([
+    '../../web/assets/parquet/parquet.filamat',
+    '../../web/assets/parquet/shader_ball.filamesh',
+    '../../web/assets/parquet/floor_ao_roughness_metallic.png',
+    '../../web/assets/parquet/floor_basecolor.jpg',
+    '../../web/assets/parquet/floor_normal.png',
+    iblfile, skyfile
+], () => {
+    window.VertexAttribute = Filament.VertexAttribute;
+    window.AttributeType = Filament.VertexBuffer$AttributeType;
+    window.PrimitiveType = Filament.RenderableManager$PrimitiveType;
+    window.IndexType = Filament.IndexBuffer$IndexType;
+    window.Fov = Filament.Camera$Fov;
+    window.LightType = Filament.LightManager$Type;
+    window.app = new App(document.getElementsByTagName('canvas')[0]);
+});
+class App {
+    constructor(canvas) {
+        this.canvas = canvas;
+        const engine = this.engine = Filament.Engine.create(this.canvas);
+        this.scene = engine.createScene();
+        const sunlight = Filament.EntityManager.get().create();
+        Filament.LightManager.Builder(LightType.SUN)
+            .color([0.98, 0.92, 0.89])
+            .intensity(100000.0)
+            .direction([0.6, -1.0, -0.8])
+            .castShadows(true)
+            .sunAngularRadius(1.9)
+            .sunHaloSize(10.0)
+            .sunHaloFalloff(80.0)
+            .build(engine, sunlight);
+        this.scene.addEntity(sunlight);
+        const indirectLight = this.ibl = engine.createIblFromKtx1(iblfile);
+        this.scene.setIndirectLight(indirectLight);
+        const radians = 1.0;
+        indirectLight.setRotation(mat3.fromRotation(mat3.create(), radians, [0, 1, 0]))
+        indirectLight.setIntensity(10000);
+        const skybox = engine.createSkyFromKtx1(skyfile);
+        this.scene.setSkybox(skybox);
+        const material = engine.createMaterial('../../web/assets/parquet/parquet.filamat');
+        const matinstance = material.createInstance();
+        const sampler = new Filament.TextureSampler(
+            Filament.MinFilter.LINEAR_MIPMAP_LINEAR,
+            Filament.MagFilter.LINEAR,
+            Filament.WrapMode.REPEAT);
+        const texargs = { usage: Filament.Texture$Usage.DEFAULT.value | Filament.Texture$Usage.GEN_MIPMAPPABLE.value };
+        const ao = engine.createTextureFromPng('../../web/assets/parquet/floor_ao_roughness_metallic.png', texargs);
+        const basecolor = engine.createTextureFromJpeg('../../web/assets/parquet/floor_basecolor.jpg', Object.assign({srgb: true}, texargs));
+        const normal = engine.createTextureFromPng('../../web/assets/parquet/floor_normal.png', texargs);
+        matinstance.setTextureParameter('aoRoughnessMetallic', ao, sampler)
+        matinstance.setTextureParameter('baseColor', basecolor, sampler)
+        matinstance.setTextureParameter('normal', normal, sampler)
+        const mesh = engine.loadFilamesh('../../web/assets/parquet/shader_ball.filamesh', matinstance);
+        this.shaderball = mesh.renderable;
+        this.scene.addEntity(mesh.renderable);
+        this.swapChain = engine.createSwapChain();
+        this.renderer = engine.createRenderer();
+        this.camera = engine.createCamera(Filament.EntityManager.get().create());
+        this.view = engine.createView();
+        this.view.setCamera(this.camera);
+        this.view.setScene(this.scene);
+        this.resize();
+        this.render = this.render.bind(this);
+        this.resize = this.resize.bind(this);
+        window.addEventListener('resize', this.resize);
+        window.requestAnimationFrame(this.render);
+    }
+    render() {
+        const radians = Date.now() / 1000;
+        const transform = mat4.fromRotation(mat4.create(), radians, [0, 1, 0]);
+        const tcm = this.engine.getTransformManager();
+        const inst = tcm.getInstance(this.shaderball);
+        tcm.setTransform(inst, transform);
+        inst.delete();
+        this.renderer.render(this.swapChain, this.view);
+        window.requestAnimationFrame(this.render);
+    }
+    resize() {
+        const dpr = window.devicePixelRatio;
+        const width = this.canvas.width = this.canvas.clientWidth * dpr;
+        const height = this.canvas.height = this.canvas.clientHeight * dpr;
+        this.view.setViewport([0, 0, width, height]);
+        const eye = [0, 1.8, 5], center = [0, 1, -1], up = [0, 1, 0];
+        this.camera.lookAt(eye, center, up);
+        const aspect = width / height;
+        const fov = aspect < 1 ? Fov.HORIZONTAL : Fov.VERTICAL;
+        this.camera.setProjectionFov(45, aspect, 1.0, 10.0, fov);
+    }
+}
+</script>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../samples/web/skinning.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../../samples/web/morphing.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../notes/material_properties.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../../samples/web/skinning.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -179,11 +277,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../samples/web/skinning.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../../samples/web/morphing.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../notes/material_properties.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../../samples/web/skinning.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
@@ -198,13 +296,13 @@
         </script>
 
 
-        <script src="../elasticlunr.min.js"></script>
-        <script src="../mark.min.js"></script>
-        <script src="../searcher.js"></script>
+        <script src="../../elasticlunr.min.js"></script>
+        <script src="../../mark.min.js"></script>
+        <script src="../../searcher.js"></script>
 
-        <script src="../clipboard.min.js"></script>
-        <script src="../highlight.js"></script>
-        <script src="../book.js"></script>
+        <script src="../../clipboard.min.js"></script>
+        <script src="../../highlight.js"></script>
+        <script src="../../book.js"></script>
 
         <!-- Custom JS scripts -->
 
