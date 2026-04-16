@@ -92,6 +92,13 @@ enum MaterialSource {
 };
 
 struct App {
+    float mouseX = 0.0f;
+    float mouseY = 0.0f;
+    float mouseUvX = 0.5f;
+    float mouseUvY = 0.5f;
+    bool mouseINside = false;
+
+
     Engine* engine;
     ViewerGui* viewer;
     Config config;
@@ -117,6 +124,10 @@ struct App {
     float originDistance = 1.0f;
 
     struct Scene {
+        Material *foveationMaterial = nullptr;
+        MaterialInstance* foveationMaterialInstance = nullptr;
+        Entity foveationOverlay;
+
         Entity groundPlane;
         VertexBuffer* groundVertexBuffer;
         IndexBuffer* groundIndexBuffer;
@@ -215,6 +226,52 @@ static void printUsage(char* name) {
 static std::ifstream::pos_type getFileSize(const char* filename) {
     std::ifstream in(filename, std::ifstream::ate | std::ifstream::binary);
     return in.tellg();
+}
+
+//Added this function
+static Material* loadMaterialFromFile(Engine* engine, const char* path) {
+    std::ifstream in(path, std::ios::binary | std::ios::ate);
+    auto size = in.tellg();
+    in.seekg(0, std::ios::beg);
+
+    std::vector<char> buffer((size_t) size);
+    in.read(buffer.data(), size);
+
+    return Material::Builder()
+        .package(buffer.data(), buffer.size())
+        .build(*engine);
+}
+//Added this function
+static void createFoveationOverlay(Engine* engine, Scene* scene, App& app) {
+    auto material = loadMaterialFromFile(
+        engine, "samples/materials/foveation_overlay.filamat");
+
+    auto mi = material->createInstance();
+
+    mi->setParameter("mouseUv", float2{ app.mouseUvX, app.mouseUvY });
+    mi->setParameter("innerRadius", 0.12f);
+    mi->setParameter("outerRadius", 0.35f);
+
+    auto& em = EntityManager::get();
+    Entity e = em.create();
+
+    RenderableManager::Builder(1)
+        .boundingBox({{}, {1.0f, 1.0f, 1.0f}})
+        .material(0, mi)
+        .geometry(0,
+            RenderableManager::PrimitiveType::TRIANGLES,
+            app.scene.fullScreenTriangleVertexBuffer,
+            app.scene.fullScreenTriangleIndexBuffer,
+            0, 3)
+        .culling(false)
+        .priority(7)
+        .build(*engine, e);
+
+    scene->addEntity(e);
+
+    app.scene.foveationMaterial = material;
+    app.scene.foveationMaterialInstance = mi;
+    app.scene.foveationOverlay = e;
 }
 
 static int handleCommandLineArguments(int argc, char* argv[], App* app) {
@@ -818,8 +875,36 @@ int main(int argc, char** argv) {
 
         createGroundPlane(engine, scene, app);
         createOverdrawVisualizerEntities(engine, scene, app);
+        createFoveationOverlay(engine, scene, app);
 
         app.viewer->setUiCallback([&app, scene, view, engine] () {
+            //EDIT
+            ImGuiIO& io = ImGui::GetIO();
+
+            app.mouseX = io.MousePos.x;
+            app.mouseY = io.MousePos.y;
+
+            // Convert to normalized screen space
+            auto vp = view->getViewport();
+
+            app.mouseUvX = (app.mouseX - vp.left) / float(vp.width);
+            app.mouseUvY = (app.mouseY - vp.bottom) / float(vp.height);
+
+            // Optional clamp
+            app.mouseUvX = std::clamp(app.mouseUvX, 0.0f, 1.0f);
+            app.mouseUvY = std::clamp(app.mouseUvY, 0.0f, 1.0f);
+
+            if (app.scene.foveationMaterialInstance) {
+                app.scene.foveationMaterialInstance->setParameter(
+                    "mouseUv", float2{ app.mouseUvX, 1.0f - app.mouseUvY });
+            }
+
+            static int frameCounter = 0;
+            if (++frameCounter % 60 == 0) {
+                std::cout << "Mouse UV: " << app.mouseUvX << ", " << app.mouseUvY << std::endl;
+            }
+
+
             auto& automation = *app.automationEngine;
 
             if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -836,6 +921,7 @@ int main(int argc, char** argv) {
             const ImVec4 yellow(1.0f,1.0f,0.0f,1.0f);
 
             if (!app.notificationText.empty()) {
+                ImGui::Text("Mouse UV: %.3f, %.3f", app.mouseUvX, app.mouseUvY);
                 ImGui::TextColored(yellow, "Picked %s", app.notificationText.c_str());
                 ImGui::Spacing();
             }

@@ -1,0 +1,42 @@
+material {
+    name : "FoveationOverlay",
+    shadingModel : unlit,
+    blending : transparent,
+    depthWrite : false,
+    depthCulling : false,
+    doubleSided : true,
+    vertexDomain : device,
+
+    parameters : [
+        { type : float2, name : mouseUv },
+        { type : float,  name : innerRadius },
+        { type : float,  name : outerRadius }
+    ]
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+
+        float2 uv = getNormalizedViewportCoord().xy;
+        float2 mouse = materialParams.mouseUv;
+
+        float dist = distance(uv, mouse);
+
+        float inner = materialParams.innerRadius;
+        float outer = materialParams.outerRadius;
+
+        // Peripheral tint
+        float periphery = smoothstep(inner, outer, dist);
+
+        // Ring around the fovea boundary
+        float ringCenter = inner;
+        float ringWidth = 0.025;
+        float ring = 1.0 - smoothstep(ringCenter - ringWidth, ringCenter + ringWidth, abs(dist - ringCenter));
+
+        vec3 color = vec3(1.0, 0.0, 0.0);
+        float alpha = 0.06 * periphery + 0.35 * ring;
+
+        material.baseColor = vec4(color, alpha);
+    }
+}

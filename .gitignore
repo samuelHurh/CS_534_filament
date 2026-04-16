@@ -24,3 +24,14 @@ results
 /gltf
 /filament-assets
 /venv
+
+# ===== Your additions =====
+*.filamat
+*.o
+*.so
+*.a
+*.out
+*.exe
+build/
+CMakeFiles/
+CMakeCache.txt
