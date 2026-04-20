@@ -43,6 +43,8 @@ void main() {
 
     initObjectUniforms();
 
+    filamentValidationMaybeDiscardHalfFragments();
+
     // See surface_shading_parameters.fs
     // Computes global variables we need to evaluate material and lighting
     computeShadingParams();

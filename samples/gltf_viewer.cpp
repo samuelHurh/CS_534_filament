@@ -231,11 +231,22 @@ static std::ifstream::pos_type getFileSize(const char* filename) {
 //Added this function
 static Material* loadMaterialFromFile(Engine* engine, const char* path) {
     std::ifstream in(path, std::ios::binary | std::ios::ate);
+    if (!in) {
+        std::cerr << "Unable to open material file: " << path << std::endl;
+        return nullptr;
+    }
     auto size = in.tellg();
+    if (size <= 0) {
+        std::cerr << "Invalid material file size: " << path << std::endl;
+        return nullptr;
+    }
     in.seekg(0, std::ios::beg);
 
     std::vector<char> buffer((size_t) size);
-    in.read(buffer.data(), size);
+    if (!in.read(buffer.data(), size)) {
+        std::cerr << "Unable to read material file: " << path << std::endl;
+        return nullptr;
+    }
 
     return Material::Builder()
         .package(buffer.data(), buffer.size())
@@ -245,6 +256,9 @@ static Material* loadMaterialFromFile(Engine* engine, const char* path) {
 static void createFoveationOverlay(Engine* engine, Scene* scene, App& app) {
     auto material = loadMaterialFromFile(
         engine, "samples/materials/foveation_overlay.filamat");
+    if (!material) {
+        return;
+    }
 
     auto mi = material->createInstance();
 

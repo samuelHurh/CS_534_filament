@@ -110,3 +110,21 @@ vec3 heatmap(float v) {
     vec3 r = v * 2.1 - vec3(1.8, 1.14, 0.3);
     return 1.0 - r * r;
 }
+
+//------------------------------------------------------------------------------
+// Preliminary fragment-discard validation (toggle via FILAMENT_VALIDATION_DROP_HALF_FRAGMENTS)
+//------------------------------------------------------------------------------
+
+#if FILAMENT_VALIDATION_DROP_HALF_FRAGMENTS
+void filamentValidationMaybeDiscardHalfFragments() {
+    // Checkerboard: discard approximately half of all fragments.
+    // Use backend-normalized screen coordinates and explicit flooring to keep the
+    // pattern stable across Vulkan / Metal / OpenGL and avoid frame jitter noise.
+    highp vec2 frag = floor(getFragCoord(frameUniforms.resolution.xy));
+    if (mod(frag.x + frag.y, 2.0) < 1.0) {
+        discard;
+    }
+}
+#else
+void filamentValidationMaybeDiscardHalfFragments() {}
+#endif

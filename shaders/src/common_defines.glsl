@@ -32,3 +32,7 @@
 #else
    #define highp_mat4 const highp mat4
 #endif
+
+// Preliminary validation only: when 1, surface shaders discard ~50% of fragments (checkerboard).
+// Set to 0 for normal rendering.
+#define FILAMENT_VALIDATION_DROP_HALF_FRAGMENTS 1
