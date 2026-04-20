@@ -157,9 +157,11 @@ public:
 
     void prepareCamera(FEngine& engine, const CameraInfo& cameraInfo) const noexcept;
 
-    void prepareLodBias(float bias, math::float2 derivativesScale) const noexcept;
+        void prepareLodBias(float bias, math::float2 derivativesScale) const noexcept;
+        void prepareFoveation(math::float2 fovealCenter, float fovealRadius, float peripheralRadius,
+            float maxLodBias, bool enabled) const noexcept;
 
-    void prepareViewport(
+        void prepareViewport(
             const Viewport& physicalViewport,
             const Viewport& logicalViewport) const noexcept;
 
@@ -351,6 +353,14 @@ public:
 
     RenderQuality getRenderQuality() const noexcept {
         return mRenderQuality;
+    }
+
+    void setFoveatedRenderingOptions(FoveatedRenderingOptions const& options) noexcept {
+        mFoveatedRendering = options;
+    }
+
+    FoveatedRenderingOptions getFoveatedRenderingOptions() const noexcept {
+        return mFoveatedRendering;
     }
 
     void setDynamicLightingOptions(float zLightNear, float zLightFar) noexcept;
@@ -623,6 +633,7 @@ private:
     bool mIsDynamicResolutionSupported = false;
 
     RenderQuality mRenderQuality;
+    FoveatedRenderingOptions mFoveatedRendering;
 
     mutable TypedUniformBuffer<PerViewUib> mUniforms;
     mutable ColorPassDescriptorSet mColorPassDescriptorSet[2];

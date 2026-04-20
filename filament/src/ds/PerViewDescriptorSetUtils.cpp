@@ -80,6 +80,16 @@ void PerViewDescriptorSetUtils::prepareLodBias(PerViewUib& s, float bias,
     s.derivativesScale = derivativesScale;
 }
 
+void PerViewDescriptorSetUtils::prepareFoveation(PerViewUib& s,
+        float2 fovealCenter, float fovealRadius, float peripheralRadius,
+        float maxLodBias, bool enabled) noexcept {
+    s.fovealCenter = fovealCenter;
+    s.fovealRadius = fovealRadius;
+    s.peripheralRadius = peripheralRadius;
+    s.maxLodBias = maxLodBias;
+    s.foveationEnabled = enabled ? 1.0f : 0.0f;
+}
+
 void PerViewDescriptorSetUtils::prepareViewport(PerViewUib& s,
         backend::Viewport const& physicalViewport,
         backend::Viewport const& logicalViewport) noexcept {

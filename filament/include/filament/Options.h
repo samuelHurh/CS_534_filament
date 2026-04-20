@@ -109,6 +109,34 @@ struct DynamicResolutionOptions {
 };
 
 /**
+ * Options to control foveated rendering based on mouse/gaze position
+ *
+ * <ul>
+ * <li>enabled:            Enable or disable foveated rendering. Disabled by default.</li>
+ * <li>fovealRadius:       Radius of the high-quality (foveal) region as a fraction of screen size (0-0.5).
+ *                         Default is 0.15 (15% of screen).</li>
+ * <li>peripheralRadius:   Outer radius for the peripheral region (0-1). Beyond this radius, 
+ *                         maximum LOD bias is applied. Default is 0.35 (35% of screen).</li>
+ * <li>maxLodBias:         Maximum texture LOD bias to apply in peripheral regions (0-3.0).
+ *                         Higher values reduce texture detail. Default is 1.5.</li>
+ * <li>fovealCenter:       Normalized viewport coordinates (0-1) for the center of the foveal region.
+ *                         Updated each frame based on mouse/gaze position.</li>
+ * </ul>
+ */
+struct FoveatedRenderingOptions {
+    /** enable or disable foveated rendering */
+    bool enabled = false;
+    /** radius of the high-quality foveal region, as a fraction of screen (0-0.5) */
+    float fovealRadius = 0.15f;
+    /** outer radius for peripheral region (0-1) */
+    float peripheralRadius = 0.35f;
+    /** maximum LOD bias in peripheral regions (0-3.0) */
+    float maxLodBias = 1.5f;
+    /** foveal center in normalized viewport coordinates (0-1) */
+    math::float2 fovealCenter = {0.5f, 0.5f};
+};
+
+/**
  * Options to control the bloom effect
  *
  * <ul>

@@ -76,6 +76,13 @@ static bool g_shadowPlane = false;
 static bool g_singleMode = false;
 static float g_rangePlot[1024 * 3];
 static float g_curvePlot[1024 * 3];
+static FoveatedRenderingOptions g_foveationOptions = {
+    .enabled = false,
+    .fovealRadius = 0.15f,
+    .peripheralRadius = 0.35f,
+    .maxLodBias = 1.5f,
+    .fovealCenter = { 0.5f, 0.5f }
+};
 
 const static ImVec2 verticalSliderSize(18.0f, 160.0f);
 const static ImVec2 plotLinesSize(320.0f, 160.0f);
@@ -613,6 +620,16 @@ static void gui(filament::Engine* engine, filament::View*) {
             FilamentApp::get().setCameraNearFar(params.cameraNear, params.cameraFar);
         }
 
+        if (ImGui::CollapsingHeader("Foveated Rendering")) {
+            ImGui::Indent();
+            ImGui::Checkbox("Enabled##foveation", &g_foveationOptions.enabled);
+            ImGui::SliderFloat("Foveal radius", &g_foveationOptions.fovealRadius, 0.01f, 0.5f);
+            ImGui::SliderFloat("Peripheral radius", &g_foveationOptions.peripheralRadius, 0.02f, 1.0f);
+            ImGui::SliderFloat("Max LOD bias", &g_foveationOptions.maxLodBias, 0.0f, 4.0f);
+            ImGui::SliderFloat2("Center", &g_foveationOptions.fovealCenter.x, 0.0f, 1.0f);
+            ImGui::Unindent();
+        }
+
         if (ImGui::CollapsingHeader("Indirect Light")) {
             ImGui::Indent();
             ImGui::SliderFloat("IBL", &params.iblIntensity, 0.0f, 50000.0f);
@@ -978,6 +995,18 @@ static void gui(filament::Engine* engine, filament::View*) {
 
 static void preRender(filament::Engine* engine, filament::View* view, filament::Scene*,
         filament::Renderer* renderer) {
+    ImGuiIO const& io = ImGui::GetIO();
+    Viewport const viewport = view->getViewport();
+    if (viewport.width > 0 && viewport.height > 0 && io.MousePos.x >= 0.0f && io.MousePos.y >= 0.0f) {
+        float2 center {
+                (io.MousePos.x - float(viewport.left)) / float(viewport.width),
+                1.0f - (io.MousePos.y - float(viewport.bottom)) / float(viewport.height)
+        };
+        g_foveationOptions.fovealCenter = {
+                clamp(center.x, 0.0f, 1.0f),
+                clamp(center.y, 0.0f, 1.0f)
+        };
+    }
     view->setAntiAliasing(g_params.fxaa ? View::AntiAliasing::FXAA : View::AntiAliasing::NONE);
     view->setDithering(g_params.dithering ? View::Dithering::TEMPORAL : View::Dithering::NONE);
     view->setBloomOptions(g_params.bloomOptions);
@@ -988,6 +1017,7 @@ static void preRender(filament::Engine* engine, filament::View* view, filament::
     view->setSampleCount((uint8_t) (g_params.msaa ? 4 : 1));
 #pragma clang diagnostic pop
     view->setAmbientOcclusionOptions(g_params.ssaoOptions);
+    view->setFoveatedRenderingOptions(g_foveationOptions);
 
     if (g_params.colorGrading) {
         if (g_params.colorGradingOptions != g_lastColorGradingOptions) {

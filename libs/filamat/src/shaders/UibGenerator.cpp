@@ -224,6 +224,16 @@ BufferInterfaceBlock const& UibGenerator::getPerViewUib() noexcept  {
             { "es2Reserved1",            0, Type::FLOAT                  },
             { "es2Reserved2",            0, Type::FLOAT                  },
 
+            // --------------------------------------------------------------------------------------------
+            // Foveated rendering parameters
+            // --------------------------------------------------------------------------------------------
+            { "fovealCenter",            0, Type::FLOAT2, Precision::HIGH, FeatureLevel::FEATURE_LEVEL_0 },
+            { "fovealRadius",            0, Type::FLOAT,  Precision::DEFAULT, FeatureLevel::FEATURE_LEVEL_0 },
+            { "peripheralRadius",        0, Type::FLOAT,  Precision::DEFAULT, FeatureLevel::FEATURE_LEVEL_0 },
+            { "maxLodBias",              0, Type::FLOAT,  Precision::DEFAULT, FeatureLevel::FEATURE_LEVEL_0 },
+            { "foveationEnabled",        0, Type::FLOAT,  Precision::DEFAULT, FeatureLevel::FEATURE_LEVEL_0 },
+            { "foveationReserved",       0, Type::FLOAT2                                    },
+
             // bring PerViewUib to 2 KiB
             { "reserved", sizeof(PerViewUib::reserved)/16, Type::FLOAT4 }
             })

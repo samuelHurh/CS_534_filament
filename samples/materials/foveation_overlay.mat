@@ -26,16 +26,16 @@ fragment {
         float inner = materialParams.innerRadius;
         float outer = materialParams.outerRadius;
 
-        // Peripheral tint
+        // Peripheral tint - very subtle
         float periphery = smoothstep(inner, outer, dist);
 
-        // Ring around the fovea boundary
+        // Ring around the fovea boundary - more visible
         float ringCenter = inner;
-        float ringWidth = 0.025;
+        float ringWidth = 0.015;
         float ring = 1.0 - smoothstep(ringCenter - ringWidth, ringCenter + ringWidth, abs(dist - ringCenter));
 
-        vec3 color = vec3(1.0, 0.0, 0.0);
-        float alpha = 0.06 * periphery + 0.35 * ring;
+        vec3 color = vec3(1.0, 0.0, 0.0);  // Red for fovea indication
+        float alpha = 0.02 * periphery + 0.15 * ring;  // Much lower opacity
 
         material.baseColor = vec4(color, alpha);
     }

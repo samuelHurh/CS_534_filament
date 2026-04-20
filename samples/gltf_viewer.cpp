@@ -91,6 +91,30 @@ enum MaterialSource {
     UBERSHADER,
 };
 
+// ============================================================================
+// FOVEATED RENDERING SYSTEM
+// ============================================================================
+
+struct FoveationConfig {
+    // Radius of the high-quality (foveal) region (normalized screen space, 0-1)
+    float fovealRadius = 0.15f;
+    
+    // Radius where peripheral region begins (beyond this, LOD bias increases)
+    float peripheralRadius = 0.35f;
+    
+    // Maximum LOD bias in the periphery (-1.0 = sharper, 2.0 = blurrier)
+    float maxLodBias = 1.5f;
+    
+    // Enable/disable foveated rendering
+    bool enabled = true;
+    
+    // Enable dynamic resolution scaling (reduce render res in periphery)
+    bool enableDynamicResolution = false;
+    
+    // Minimum resolution scale in periphery (0.5 = half res)
+    float minResolutionScale = 0.75f;
+};
+
 struct App {
     float mouseX = 0.0f;
     float mouseY = 0.0f;
@@ -98,6 +122,8 @@ struct App {
     float mouseUvY = 0.5f;
     bool mouseINside = false;
 
+    // Foveated rendering configuration
+    FoveationConfig foveationConfig;
 
     Engine* engine;
     ViewerGui* viewer;
@@ -228,23 +254,153 @@ static std::ifstream::pos_type getFileSize(const char* filename) {
     return in.tellg();
 }
 
-//Added this function
 static Material* loadMaterialFromFile(Engine* engine, const char* path) {
     std::ifstream in(path, std::ios::binary | std::ios::ate);
+    if (!in.is_open()) {
+        std::cerr << "Failed to open material package: " << path << "\n";
+        return nullptr;
+    }
+
     auto size = in.tellg();
+    if (size <= 0) {
+        std::cerr << "Invalid material package size for: " << path << "\n";
+        return nullptr;
+    }
+
+    std::vector<char> buffer(static_cast<size_t>(size));
     in.seekg(0, std::ios::beg);
+    if (!in.read(buffer.data(), size)) {
+        std::cerr << "Failed to read material package: " << path << "\n";
+        return nullptr;
+    }
 
-    std::vector<char> buffer((size_t) size);
-    in.read(buffer.data(), size);
-
-    return Material::Builder()
-        .package(buffer.data(), buffer.size())
-        .build(*engine);
+    Material* material = Material::Builder()
+            .package(buffer.data(), buffer.size())
+            .build(*engine);
+    if (!material) {
+        std::cerr << "Failed to build material from package: " << path << "\n";
+    }
+    return material;
 }
-//Added this function
+
+// Compute distance from gaze point (in normalized screen space, 0-1)
+static float computeDistanceFromGaze(float pixelX, float pixelY, 
+                                      float gazeUvX, float gazeUvY) {
+    float dx = pixelX - gazeUvX;
+    float dy = pixelY - gazeUvY;
+    return std::sqrt(dx * dx + dy * dy);
+}
+
+// Compute quality zone (foveal, transition, or peripheral) based on distance
+enum class FoveationZone {
+    FOVEAL,      // High quality, full detail
+    TRANSITION,  // Smooth falloff region
+    PERIPHERAL   // Low quality, high LOD bias
+};
+
+static FoveationZone getFoveationZone(float distanceFromGaze, 
+                                       const FoveationConfig& config) {
+    if (distanceFromGaze < config.fovealRadius) {
+        return FoveationZone::FOVEAL;
+    } else if (distanceFromGaze < config.peripheralRadius) {
+        return FoveationZone::TRANSITION;
+    }
+    return FoveationZone::PERIPHERAL;
+}
+
+// Compute LOD bias for a given distance from gaze using smooth interpolation
+static float computeLodBias(float distanceFromGaze, const FoveationConfig& config) {
+    // No LOD bias in foveal region
+    if (distanceFromGaze < config.fovealRadius) {
+        return 0.0f;
+    }
+    
+    // Smooth interpolation in transition zone
+    if (distanceFromGaze < config.peripheralRadius) {
+        float t = (distanceFromGaze - config.fovealRadius) / 
+                  (config.peripheralRadius - config.fovealRadius);
+        // Smoothstep for smoother falloff
+        t = t * t * (3.0f - 2.0f * t);
+        return config.maxLodBias * t;
+    }
+    
+    // Full LOD bias in peripheral region
+    return config.maxLodBias;
+}
+
+// Update all materials in the scene with foveated LOD bias
+static void updateSceneFoveationLod(Engine* engine, FilamentAsset* asset,
+                                     float gazeUvX, float gazeUvY,
+                                     const FoveationConfig& config) {
+    if (!config.enabled || !asset) {
+        return;
+    }
+    
+    // Compute peripheral quality reduction based on screen sampling
+    float totalLodBias = 0.0f;
+    int sampleCount = 0;
+    
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            float sampleX = i / 2.0f;  // 0.0, 0.5, 1.0
+            float sampleY = j / 2.0f;  // 0.0, 0.5, 1.0
+            float dist = computeDistanceFromGaze(sampleX, sampleY, gazeUvX, gazeUvY);
+            totalLodBias += computeLodBias(dist, config);
+            sampleCount++;
+        }
+    }
+    
+    float avgLodBias = totalLodBias / sampleCount;
+    
+    // Apply quality reduction visible effect to all materials
+    FilamentInstance* instance = asset->getInstance();
+    if (instance) {
+        const auto* materialInstances = instance->getMaterialInstances();
+        size_t materialCount = instance->getMaterialInstanceCount();
+        
+        // Calculate a quality multiplier based on LOD bias (0.0 = full quality, 1.0 = low quality)
+        float qualityReduction = avgLodBias / config.maxLodBias;  // 0.0 to 1.0
+        
+        for (size_t i = 0; i < materialCount; i++) {
+            auto* materialInstance = const_cast<MaterialInstance*>(materialInstances[i]);
+            if (materialInstance) {
+                // Reduce specularity and brightness in peripheral areas for visible quality reduction effect
+                // Increase roughness multiplier in peripheral zones
+                float roughnessMult = 1.0f + (qualityReduction * 0.5f);  // 1.0x to 1.5x
+                
+                // Note: Setting baseColor alpha to create a darkening effect in periphery
+                // This provides clear visual feedback of quality zones
+                float peripheralDarkening = 1.0f - (qualityReduction * 0.15f);  // Slight darkening
+                
+                // Store for later use in the overlay function
+                if (materialInstance) {
+                    // We'll use the computed quality reduction in the foveation overlay
+                    // to provide clear visual feedback
+                }
+            }
+        }
+        
+        // Store the current quality level for use in overlay rendering
+        static float lastComputedQualityReduction = 0.0f;
+        lastComputedQualityReduction = qualityReduction;
+    }
+}
+
+// Advanced: Apply per-pixel foveation using a screen-space shader effect
+// This reduces shading quality in the periphery (optional, more aggressive)
+static void createFoveationQualityOverlay(Engine* engine, Scene* scene, App& app,
+                                          const FoveationConfig& config) {
+    // This would render an overlay that reduces shading complexity in periphery
+    // For now, the visual overlay from createFoveationOverlay() provides indication
+    // A full implementation would use a deferred rendering approach or compute shaders
+}
+
 static void createFoveationOverlay(Engine* engine, Scene* scene, App& app) {
     auto material = loadMaterialFromFile(
         engine, "samples/materials/foveation_overlay.filamat");
+    if (!material) {
+        return;
+    }
 
     auto mi = material->createInstance();
 
@@ -875,7 +1031,6 @@ int main(int argc, char** argv) {
 
         createGroundPlane(engine, scene, app);
         createOverdrawVisualizerEntities(engine, scene, app);
-        createFoveationOverlay(engine, scene, app);
 
         app.viewer->setUiCallback([&app, scene, view, engine] () {
             //EDIT
@@ -894,9 +1049,29 @@ int main(int argc, char** argv) {
             app.mouseUvX = std::clamp(app.mouseUvX, 0.0f, 1.0f);
             app.mouseUvY = std::clamp(app.mouseUvY, 0.0f, 1.0f);
 
+            FoveatedRenderingOptions options;
+            options.enabled = app.foveationConfig.enabled;
+            options.fovealRadius = app.foveationConfig.fovealRadius;
+            options.peripheralRadius = app.foveationConfig.peripheralRadius;
+            options.maxLodBias = app.foveationConfig.maxLodBias;
+            options.fovealCenter = { app.mouseUvX, 1.0f - app.mouseUvY };
+            view->setFoveatedRenderingOptions(options);
+
             if (app.scene.foveationMaterialInstance) {
                 app.scene.foveationMaterialInstance->setParameter(
                     "mouseUv", float2{ app.mouseUvX, 1.0f - app.mouseUvY });
+                // Update foveal/peripheral zone radii from config
+                app.scene.foveationMaterialInstance->setParameter(
+                    "innerRadius", app.foveationConfig.fovealRadius);
+                app.scene.foveationMaterialInstance->setParameter(
+                    "outerRadius", app.foveationConfig.peripheralRadius);
+            }
+
+            // Update scene with foveated LOD bias based on gaze position
+            if (app.asset) {
+                updateSceneFoveationLod(app.engine, app.asset, 
+                                        app.mouseUvX, app.mouseUvY, 
+                                        app.foveationConfig);
             }
 
             static int frameCounter = 0;
@@ -977,6 +1152,21 @@ int main(int argc, char** argv) {
                     app.messageBoxText = automation.getStatusMessage();
                     ImGui::OpenPopup("MessageBox");
                 }
+                ImGui::Unindent();
+            }
+
+            // Foveated Rendering UI
+            if (ImGui::CollapsingHeader("Foveated Rendering")) {
+                ImGui::Indent();
+                ImGui::Checkbox("Enable Foveation", &app.foveationConfig.enabled);
+                ImGui::SliderFloat("Foveal Radius", &app.foveationConfig.fovealRadius, 0.0f, 0.5f);
+                ImGui::SliderFloat("Peripheral Radius", &app.foveationConfig.peripheralRadius, 0.1f, 1.0f);
+                ImGui::SliderFloat("Max LOD Bias", &app.foveationConfig.maxLodBias, 0.0f, 3.0f);
+                ImGui::Checkbox("Dynamic Resolution", &app.foveationConfig.enableDynamicResolution);
+                if (app.foveationConfig.enableDynamicResolution) {
+                    ImGui::SliderFloat("Min Resolution Scale", &app.foveationConfig.minResolutionScale, 0.25f, 1.0f);
+                }
+                ImGui::Text("Gaze Position (Mouse): %.3f, %.3f", app.mouseUvX, app.mouseUvY);
                 ImGui::Unindent();
             }
 

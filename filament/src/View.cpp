@@ -190,6 +190,14 @@ View::RenderQuality View::getRenderQuality() const noexcept {
     return downcast(this)->getRenderQuality();
 }
 
+void View::setFoveatedRenderingOptions(FoveatedRenderingOptions const& options) noexcept {
+    downcast(this)->setFoveatedRenderingOptions(options);
+}
+
+FoveatedRenderingOptions View::getFoveatedRenderingOptions() const noexcept {
+    return downcast(this)->getFoveatedRenderingOptions();
+}
+
 void View::setPostProcessingEnabled(bool const enabled) noexcept {
     downcast(this)->setPostProcessingEnabled(enabled);
 }
