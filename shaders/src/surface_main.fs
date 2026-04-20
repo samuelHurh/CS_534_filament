@@ -43,7 +43,7 @@ void main() {
 
     initObjectUniforms();
 
-    filamentValidationMaybeDiscardHalfFragments();
+    bool validationDiscardedFragment = filamentValidationShouldDropHalfFragment();
 
     // See surface_shading_parameters.fs
     // Computes global variables we need to evaluate material and lighting
@@ -59,6 +59,9 @@ void main() {
     applyAlphaMask(inputs.baseColor);
 
     fragColor = evaluateMaterial(inputs);
+    if (validationDiscardedFragment) {
+        fragColor = filamentValidationNeighborColorFallback(fragColor);
+    }
 
 #if defined(MATERIAL_HAS_POST_LIGHTING_COLOR) && !defined(MATERIAL_HAS_REFLECTIONS)
     blendPostLightingColor(inputs, fragColor);

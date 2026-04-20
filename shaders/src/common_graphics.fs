@@ -116,15 +116,31 @@ vec3 heatmap(float v) {
 //------------------------------------------------------------------------------
 
 #if FILAMENT_VALIDATION_DROP_HALF_FRAGMENTS
-void filamentValidationMaybeDiscardHalfFragments() {
-    // Checkerboard: discard approximately half of all fragments.
-    // Use backend-normalized screen coordinates and explicit flooring to keep the
-    // pattern stable across Vulkan / Metal / OpenGL and avoid frame jitter noise.
+bool filamentValidationShouldDropHalfFragment() {
+    // discard approximately half of all fragments.
     highp vec2 frag = floor(getFragCoord(frameUniforms.resolution.xy));
-    if (mod(frag.x + frag.y, 2.0) < 1.0) {
+    return mod(frag.x + frag.y, 8.0) < 4.0;
+}
+
+void filamentValidationMaybeDiscardHalfFragments() {
+    if (filamentValidationShouldDropHalfFragment()) {
         discard;
     }
 }
+
+vec4 filamentValidationNeighborColorFallback(const vec4 color) {
+    // Extrapolate from a nearby surviving fragment along +X until the phase
+    // reaches a non-discarded value.
+    highp vec2 frag = floor(getFragCoord(frameUniforms.resolution.xy));
+    float phase = mod(frag.x + frag.y, 8.0);
+    if (phase < 4.0) {
+        float dx = 4.0 - phase;
+        return color + dFdx(color) * dx;
+    }
+    return color;
+}
 #else
+bool filamentValidationShouldDropHalfFragment() { return false; }
 void filamentValidationMaybeDiscardHalfFragments() {}
+vec4 filamentValidationNeighborColorFallback(const vec4 color) { return color; }
 #endif
