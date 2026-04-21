@@ -568,6 +568,19 @@ public:
     RenderQuality getRenderQuality() const noexcept;
 
     /**
+     * Sets foveated rendering options for this view.
+     * 
+     * @param options foveated rendering configuration
+     */
+    void setFoveatedRenderingOptions(FoveatedRenderingOptions const& options) noexcept;
+
+    /**
+     * Returns the foveated rendering options used by this view.
+     * @return value set by setFoveatedRenderingOptions().
+     */
+    FoveatedRenderingOptions getFoveatedRenderingOptions() const noexcept;
+
+    /**
      * Sets options relative to dynamic lighting for this view.
      *
      * @param zLightNear Distance from the camera where the lights are expected to shine.

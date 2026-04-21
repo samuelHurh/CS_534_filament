@@ -22,6 +22,7 @@ set(MATERIAL_SRCS
         materials/bakedTexture.mat
         materials/aoPreview.mat
         materials/arrayTexture.mat
+        materials/foveation_overlay.mat
         materials/groundShadow.mat
         materials/heightfield.mat
         materials/image.mat

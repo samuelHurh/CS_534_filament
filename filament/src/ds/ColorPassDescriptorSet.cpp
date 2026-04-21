@@ -151,6 +151,12 @@ void ColorPassDescriptorSet::prepareLodBias(float const bias, float2 const deriv
     PerViewDescriptorSetUtils::prepareLodBias(mUniforms.edit(), bias, derivativesScale);
 }
 
+void ColorPassDescriptorSet::prepareFoveation(float2 fovealCenter, float fovealRadius,
+        float peripheralRadius, float maxLodBias, bool enabled) noexcept {
+    PerViewDescriptorSetUtils::prepareFoveation(mUniforms.edit(), fovealCenter, fovealRadius,
+            peripheralRadius, maxLodBias, enabled);
+}
+
 void ColorPassDescriptorSet::prepareExposure(float const ev100) noexcept {
     const float exposure = Exposure::exposure(ev100);
     auto& s = mUniforms.edit();

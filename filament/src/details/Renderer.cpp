@@ -896,10 +896,17 @@ void FRenderer::renderJob(DriverApi& driver, RootArenaScope& rootArenaScope, FVi
      * updated again during the frame.
      */
 
-    auto [bias, derivativeScale] = prepareUpscaler(scale, taaOptions, dsrOptions);
-    view.prepare(engine, driver, rootArenaScope, svp, taaCameraInfo, getShaderUserTime(), needsAlphaChannel);
-    view.prepareLodBias(bias, derivativeScale);
-    view.prepareSSAO(aoOptions);
+        auto [bias, derivativeScale] = prepareUpscaler(scale, taaOptions, dsrOptions);
+        view.prepare(engine, driver, rootArenaScope, svp, taaCameraInfo, getShaderUserTime(), needsAlphaChannel);
+        view.prepareLodBias(bias, derivativeScale);
+    
+        // Update foveation parameters from the view options
+        auto const& foveationOptions = view.getFoveatedRenderingOptions();
+        view.prepareFoveation(foveationOptions.fovealCenter, foveationOptions.fovealRadius,
+            foveationOptions.peripheralRadius, foveationOptions.maxLodBias,
+            foveationOptions.enabled);
+    
+        view.prepareSSAO(aoOptions);
     view.prepareSSR(engine, cameraInfo, ssrConfig.lodOffset, ssReflectionsOptions);
     view.prepareShadowMapping();
     // There might be a bug here with svp's origin; normally the origin could offset when the

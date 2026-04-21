@@ -216,8 +216,19 @@ struct PerViewUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
     float es2Reserved1;
     float es2Reserved2;
 
+    // --------------------------------------------------------------------------------------------
+    // Foveated rendering parameters
+    // --------------------------------------------------------------------------------------------
+    math::float2 fovealCenter;          // normalized viewport coordinates (0-1) of foveal center
+    float fovealRadius;                 // radius of high-quality foveal region (normalized, 0-0.5)
+    float peripheralRadius;             // outer radius for peripheral region (normalized, 0-1)
+    
+    float maxLodBias;                   // maximum LOD bias in peripheral region (0-3.0)
+    float foveationEnabled;             // 1.0 if enabled, 0.0 if disabled
+    math::float2 foveationReserved;     // padding to reach 2 KiB
+
     // bring PerViewUib to 2 KiB
-    math::float4 reserved[21];
+    math::float4 reserved[19];
 };
 
 // 2 KiB == 128 float4s

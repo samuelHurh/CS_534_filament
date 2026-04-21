@@ -39,6 +39,10 @@ public:
     static void prepareLodBias(PerViewUib& uniforms,
             float bias, math::float2 derivativesScale) noexcept;
 
+    static void prepareFoveation(PerViewUib& uniforms,
+            math::float2 fovealCenter, float fovealRadius, float peripheralRadius,
+            float maxLodBias, bool enabled) noexcept;
+
     static void prepareViewport(PerViewUib& uniforms,
             backend::Viewport const& physicalViewport,
             backend::Viewport const& logicalViewport) noexcept;
