@@ -115,10 +115,11 @@ struct DynamicResolutionOptions {
  * <li>enabled:            Enable or disable foveated rendering. Disabled by default.</li>
  * <li>fovealRadius:       Radius of the high-quality (foveal) region as a fraction of screen size (0-0.5).
  *                         Default is 0.15 (15% of screen).</li>
- * <li>peripheralRadius:   Outer radius for the peripheral region (0-1). Beyond this radius, 
- *                         maximum LOD bias is applied. Default is 0.35 (35% of screen).</li>
- * <li>maxLodBias:         Maximum texture LOD bias to apply in peripheral regions (0-3.0).
- *                         Higher values reduce texture detail. Default is 1.5.</li>
+ * <li>peripheralRadius:   Outer radius of the transition annulus (0-1). At or beyond this,
+ *                         the outer subsampling rate applies.</li>
+ * <li>transitionKeep:     Approximate fraction of fragments kept in the annulus between foveal
+ *                         and peripheral radii (0-1).</li>
+ * <li>outerKeep:          Fraction of fragments kept at or beyond peripheralRadius (0-1).</li>
  * <li>fovealCenter:       Normalized viewport coordinates (0-1) for the center of the foveal region.
  *                         Updated each frame based on mouse/gaze position.</li>
  * </ul>
@@ -130,8 +131,10 @@ struct FoveatedRenderingOptions {
     float fovealRadius = 0.15f;
     /** outer radius for peripheral region (0-1) */
     float peripheralRadius = 0.35f;
-    /** maximum LOD bias in peripheral regions (0-3.0) */
-    float maxLodBias = 1.5f;
+    /** fragment keep fraction between foveal and peripheral radii (0-1) */
+    float transitionKeep = 0.5f;
+    /** fragment keep fraction at or beyond peripheralRadius (0-1) */
+    float outerKeep = 0.125f;
     /** foveal center in normalized viewport coordinates (0-1) */
     math::float2 fovealCenter = {0.5f, 0.5f};
 };

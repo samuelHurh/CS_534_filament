@@ -144,3 +144,49 @@ bool filamentValidationShouldDropHalfFragment() { return false; }
 void filamentValidationMaybeDiscardHalfFragments() {}
 vec4 filamentValidationNeighborColorFallback(const vec4 color) { return color; }
 #endif
+
+//------------------------------------------------------------------------------
+// Foveated fragment subsampling (same phase pattern as validation; dFdx fill)
+//------------------------------------------------------------------------------
+
+bool filamentFoveationShouldDropFragment() {
+    if (frameUniforms.foveationEnabled < 0.5) {
+        return false;
+    }
+    highp vec2 fragPx = getFragCoord(frameUniforms.resolution.xy);
+    vec2 uv = fragPx * frameUniforms.resolution.zw;
+    float dist = length(uv - frameUniforms.fovealCenter);
+    if (dist <= frameUniforms.fovealRadius) {
+        return false;
+    }
+    float ringKeep = clamp(frameUniforms.foveationTransitionKeep, 0.001, 1.0);
+    float outerKeep = clamp(frameUniforms.foveationOuterKeep, 0.001, 1.0);
+    float keep = (dist >= frameUniforms.peripheralRadius) ? outerKeep : ringKeep;
+    float minPhase = 8.0 * (1.0 - keep);
+    highp vec2 frag = floor(fragPx);
+    float phase = mod(frag.x + frag.y, 8.0);
+    return phase < minPhase;
+}
+
+vec4 filamentFoveationNeighborColorFallback(const vec4 color) {
+    if (frameUniforms.foveationEnabled < 0.5) {
+        return color;
+    }
+    highp vec2 fragPx = getFragCoord(frameUniforms.resolution.xy);
+    vec2 uv = fragPx * frameUniforms.resolution.zw;
+    float dist = length(uv - frameUniforms.fovealCenter);
+    if (dist <= frameUniforms.fovealRadius) {
+        return color;
+    }
+    float ringKeep = clamp(frameUniforms.foveationTransitionKeep, 0.001, 1.0);
+    float outerKeep = clamp(frameUniforms.foveationOuterKeep, 0.001, 1.0);
+    float keep = (dist >= frameUniforms.peripheralRadius) ? outerKeep : ringKeep;
+    float minPhase = 8.0 * (1.0 - keep);
+    highp vec2 frag = floor(fragPx);
+    float phase = mod(frag.x + frag.y, 8.0);
+    if (phase < minPhase) {
+        float dx = minPhase - phase;
+        return color + dFdx(color) * dx;
+    }
+    return color;
+}

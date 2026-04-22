@@ -41,7 +41,7 @@ public:
 
     static void prepareFoveation(PerViewUib& uniforms,
             math::float2 fovealCenter, float fovealRadius, float peripheralRadius,
-            float maxLodBias, bool enabled) noexcept;
+            float transitionKeep, float outerKeep, bool enabled) noexcept;
 
     static void prepareViewport(PerViewUib& uniforms,
             backend::Viewport const& physicalViewport,

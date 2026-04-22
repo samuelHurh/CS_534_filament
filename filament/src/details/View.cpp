@@ -884,7 +884,8 @@ void FView::prepare(FEngine& engine, DriverApi& driver, RootArenaScope& rootAren
     colorPassDescriptorSet.prepareCamera(engine, cameraInfo);
         auto const& foveation = mFoveatedRendering;
         colorPassDescriptorSet.prepareFoveation(foveation.fovealCenter, foveation.fovealRadius,
-            foveation.peripheralRadius, foveation.maxLodBias, foveation.enabled);
+            foveation.peripheralRadius, foveation.transitionKeep, foveation.outerKeep,
+            foveation.enabled);
     colorPassDescriptorSet.prepareTime(engine, userTime);
     colorPassDescriptorSet.prepareFog(engine, cameraInfo, fogTransform, mFogOptions,
             scene->getIndirectLight());
@@ -1040,9 +1041,9 @@ void FView::prepareLodBias(float const bias, float2 const derivativesScale) cons
 }
 
 void FView::prepareFoveation(float2 fovealCenter, float fovealRadius, float peripheralRadius,
-        float maxLodBias, bool enabled) const noexcept {
+        float transitionKeep, float outerKeep, bool enabled) const noexcept {
     getColorPassDescriptorSet().prepareFoveation(fovealCenter, fovealRadius, peripheralRadius,
-            maxLodBias, enabled);
+            transitionKeep, outerKeep, enabled);
 }
 
 void FView::prepareViewport(

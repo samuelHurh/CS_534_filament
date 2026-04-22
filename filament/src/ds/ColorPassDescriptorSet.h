@@ -85,7 +85,7 @@ public:
     void prepareCamera(FEngine& engine, const CameraInfo& camera) noexcept;
     void prepareLodBias(float bias, math::float2 derivativesScale) noexcept;
     void prepareFoveation(math::float2 fovealCenter, float fovealRadius, float peripheralRadius,
-            float maxLodBias, bool enabled) noexcept;
+            float transitionKeep, float outerKeep, bool enabled) noexcept;
 
     /*
      * @param viewport  viewport (should be same as RenderPassParams::viewport)

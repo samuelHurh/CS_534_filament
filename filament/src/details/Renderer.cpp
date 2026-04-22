@@ -903,8 +903,8 @@ void FRenderer::renderJob(DriverApi& driver, RootArenaScope& rootArenaScope, FVi
         // Update foveation parameters from the view options
         auto const& foveationOptions = view.getFoveatedRenderingOptions();
         view.prepareFoveation(foveationOptions.fovealCenter, foveationOptions.fovealRadius,
-            foveationOptions.peripheralRadius, foveationOptions.maxLodBias,
-            foveationOptions.enabled);
+            foveationOptions.peripheralRadius, foveationOptions.transitionKeep,
+            foveationOptions.outerKeep, foveationOptions.enabled);
     
         view.prepareSSAO(aoOptions);
     view.prepareSSR(engine, cameraInfo, ssrConfig.lodOffset, ssReflectionsOptions);

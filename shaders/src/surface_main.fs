@@ -36,36 +36,7 @@ void applyAlphaMask(inout vec4 baseColor) {}
 #endif
 
 void main() {
-    // Compute foveated LOD bias based on distance from foveal center
-    float lodBias = frameUniforms.lodBias;
-    
-    if (frameUniforms.foveationEnabled > 0.5) {
-        // Get normalized screen coordinates
-        vec2 screenCoord = gl_FragCoord.xy / frameUniforms.resolution.xy;
-        vec2 fovealCenter = frameUniforms.fovealCenter;
-        
-        // Compute distance from foveal center
-        float dist = length(screenCoord - fovealCenter);
-        float fovealRadius = frameUniforms.fovealRadius;
-        float peripheralRadius = frameUniforms.peripheralRadius;
-        
-        // Smooth interpolation of LOD bias based on distance from fovea
-        if (dist > fovealRadius) {
-            if (dist < peripheralRadius) {
-                // Transition zone: smooth falloff
-                float t = (dist - fovealRadius) / (peripheralRadius - fovealRadius);
-                // Smoothstep for smooth interpolation
-                t = t * t * (3.0 - 2.0 * t);
-                lodBias += frameUniforms.maxLodBias * t;
-            } else {
-                // Peripheral zone: full LOD bias
-                lodBias += frameUniforms.maxLodBias;
-            }
-        }
-        // In foveal zone (dist <= fovealRadius), keep base lodBias unchanged
-    }
-    
-    filament_lodBias = lodBias;
+    filament_lodBias = frameUniforms.lodBias;
 #if defined(FILAMENT_HAS_FEATURE_INSTANCING)
     logical_instance_index = instance_index;
 #endif
@@ -73,6 +44,7 @@ void main() {
     initObjectUniforms();
 
     bool validationDiscardedFragment = filamentValidationShouldDropHalfFragment();
+    bool foveationDroppedFragment = filamentFoveationShouldDropFragment();
 
     // See surface_shading_parameters.fs
     // Computes global variables we need to evaluate material and lighting
@@ -90,6 +62,9 @@ void main() {
     fragColor = evaluateMaterial(inputs);
     if (validationDiscardedFragment) {
         fragColor = filamentValidationNeighborColorFallback(fragColor);
+    }
+    if (foveationDroppedFragment) {
+        fragColor = filamentFoveationNeighborColorFallback(fragColor);
     }
 
 #if defined(MATERIAL_HAS_POST_LIGHTING_COLOR) && !defined(MATERIAL_HAS_REFLECTIONS)

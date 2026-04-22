@@ -223,9 +223,12 @@ struct PerViewUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
     float fovealRadius;                 // radius of high-quality foveal region (normalized, 0-0.5)
     float peripheralRadius;             // outer radius for peripheral region (normalized, 0-1)
     
-    float maxLodBias;                   // maximum LOD bias in peripheral region (0-3.0)
+    /** Fraction of diagonal-phase fragments kept (0-1) between foveal and peripheral radii. */
+    float foveationTransitionKeep;
     float foveationEnabled;             // 1.0 if enabled, 0.0 if disabled
-    math::float2 foveationReserved;     // padding to reach 2 KiB
+    /** Fraction kept at or beyond peripheralRadius (typically lower than transition). */
+    float foveationOuterKeep;
+    float foveationPad;                 // unused (std140 padding)
 
     // bring PerViewUib to 2 KiB
     math::float4 reserved[19];

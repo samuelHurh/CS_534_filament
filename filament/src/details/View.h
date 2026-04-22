@@ -159,7 +159,7 @@ public:
 
         void prepareLodBias(float bias, math::float2 derivativesScale) const noexcept;
         void prepareFoveation(math::float2 fovealCenter, float fovealRadius, float peripheralRadius,
-            float maxLodBias, bool enabled) const noexcept;
+            float transitionKeep, float outerKeep, bool enabled) const noexcept;
 
         void prepareViewport(
             const Viewport& physicalViewport,

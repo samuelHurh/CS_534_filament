@@ -80,7 +80,8 @@ static FoveatedRenderingOptions g_foveationOptions = {
     .enabled = false,
     .fovealRadius = 0.15f,
     .peripheralRadius = 0.35f,
-    .maxLodBias = 1.5f,
+    .transitionKeep = 0.5f,
+    .outerKeep = 0.125f,
     .fovealCenter = { 0.5f, 0.5f }
 };
 
@@ -625,7 +626,8 @@ static void gui(filament::Engine* engine, filament::View*) {
             ImGui::Checkbox("Enabled##foveation", &g_foveationOptions.enabled);
             ImGui::SliderFloat("Foveal radius", &g_foveationOptions.fovealRadius, 0.01f, 0.5f);
             ImGui::SliderFloat("Peripheral radius", &g_foveationOptions.peripheralRadius, 0.02f, 1.0f);
-            ImGui::SliderFloat("Max LOD bias", &g_foveationOptions.maxLodBias, 0.0f, 4.0f);
+            ImGui::SliderFloat("Transition keep", &g_foveationOptions.transitionKeep, 0.0f, 1.0f);
+            ImGui::SliderFloat("Outer keep", &g_foveationOptions.outerKeep, 0.0f, 1.0f);
             ImGui::SliderFloat2("Center", &g_foveationOptions.fovealCenter.x, 0.0f, 1.0f);
             ImGui::Unindent();
         }

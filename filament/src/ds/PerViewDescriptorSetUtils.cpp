@@ -82,11 +82,13 @@ void PerViewDescriptorSetUtils::prepareLodBias(PerViewUib& s, float bias,
 
 void PerViewDescriptorSetUtils::prepareFoveation(PerViewUib& s,
         float2 fovealCenter, float fovealRadius, float peripheralRadius,
-        float maxLodBias, bool enabled) noexcept {
+        float transitionKeep, float outerKeep, bool enabled) noexcept {
     s.fovealCenter = fovealCenter;
     s.fovealRadius = fovealRadius;
     s.peripheralRadius = peripheralRadius;
-    s.maxLodBias = maxLodBias;
+    s.foveationTransitionKeep = transitionKeep;
+    s.foveationOuterKeep = outerKeep;
+    s.foveationPad = 0.0f;
     s.foveationEnabled = enabled ? 1.0f : 0.0f;
 }
 
