@@ -63,12 +63,14 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <set>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "generated/resources/gltf_demo.h"
 #include "materials/uberarchive.h"
@@ -110,6 +112,122 @@ struct FoveationConfig {
     bool enabled = true;
 };
 
+struct GazePlayback {
+    struct Sample {
+        double time = 0.0;
+        float dx = 0.0f;
+        float dy = 0.0f;
+        float dz = 1.0f;
+    };
+
+    std::vector<Sample> samples;
+    size_t cursor = 0;
+    double startTime = -1.0;
+    bool enabled = false;
+
+    bool load() {
+        static constexpr const char* PATHS[] = {
+                "gaze_log_20260406_080818.csv",
+                "../gaze_log_20260406_080818.csv",
+                "../../gaze_log_20260406_080818.csv",
+                "../../../gaze_log_20260406_080818.csv",
+                "/home/shurh/filament/gaze_log_20260406_080818.csv",
+                "/mnt/c/Users/shurh/Downloads/gaze_log_20260406_080818.csv",
+        };
+
+        for (char const* path : PATHS) {
+            std::ifstream in(path);
+            if (!in) {
+                continue;
+            }
+
+            std::string line;
+            std::getline(in, line); // header
+
+            double firstTime = -1.0;
+            std::vector<Sample> parsed;
+            while (std::getline(in, line)) {
+                std::stringstream ss(line);
+                std::string token;
+                std::array<std::string, 14> columns;
+                size_t column = 0;
+                while (column < columns.size() && std::getline(ss, token, ',')) {
+                    columns[column++] = token;
+                }
+                if (column < columns.size()) {
+                    continue;
+                }
+
+                try {
+                    double const time = std::stod(columns[0]);
+                    if (firstTime < 0.0) {
+                        firstTime = time;
+                    }
+                    parsed.push_back({
+                            time - firstTime,
+                            std::stof(columns[11]),
+                            std::stof(columns[12]),
+                            std::stof(columns[13]),
+                    });
+                } catch (...) {
+                    // Skip malformed rows, keeping playback resilient to logging hiccups.
+                }
+            }
+
+            if (!parsed.empty()) {
+                samples = std::move(parsed);
+                cursor = 0;
+                startTime = -1.0;
+                enabled = true;
+                std::cout << "Loaded gaze playback from " << path << " (" << samples.size()
+                          << " samples)" << std::endl;
+                return true;
+            }
+        }
+
+        std::cout << "No gaze CSV found; using mouse foveation input." << std::endl;
+        return false;
+    }
+
+    bool update(double now, float* outUvX, float* outUvY) {
+        if (!enabled || samples.empty()) {
+            return false;
+        }
+        if (startTime < 0.0) {
+            startTime = now;
+        }
+
+        double elapsed = now - startTime;
+        double const duration = samples.back().time;
+        if (duration > 0.0) {
+            elapsed = std::fmod(elapsed, duration);
+        }
+
+        if (cursor + 1 >= samples.size() || elapsed < samples[cursor].time) {
+            cursor = 0;
+        }
+        while (cursor + 1 < samples.size() && samples[cursor + 1].time < elapsed) {
+            ++cursor;
+        }
+
+        Sample gaze = samples[cursor];
+        if (cursor + 1 < samples.size()) {
+            Sample const& a = samples[cursor];
+            Sample const& b = samples[cursor + 1];
+            double const span = std::max(1e-6, b.time - a.time);
+            float const t = float((elapsed - a.time) / span);
+            gaze.dx = a.dx + (b.dx - a.dx) * t;
+            gaze.dy = a.dy + (b.dy - a.dy) * t;
+            gaze.dz = a.dz + (b.dz - a.dz) * t;
+        }
+
+        float const dz = std::abs(gaze.dz) < 1e-4f ? 1.0f : gaze.dz;
+        *outUvX = std::clamp(0.5f + gaze.dx / dz, 0.0f, 1.0f);
+        *outUvY = std::clamp(0.5f + gaze.dy / dz, 0.0f, 1.0f);
+        return true;
+    }
+};
+
 struct App {
     float mouseX = 0.0f;
     float mouseY = 0.0f;
@@ -119,6 +237,8 @@ struct App {
 
     // Foveated rendering configuration
     FoveationConfig foveationConfig;
+    GazePlayback gazePlayback;
+    bool usingGazeInput = false;
 
     Engine* engine;
     ViewerGui* viewer;
@@ -708,6 +828,7 @@ int main(int argc, char** argv) {
     app.config.iblDirectory = FilamentApp::getRootAssetsPath() + DEFAULT_IBL;
 
     int const optionIndex = handleCommandLineArguments(argc, argv, &app);
+    app.usingGazeInput = app.gazePlayback.load();
 
     utils::Path filename;
     int const num_args = argc - optionIndex;
@@ -792,7 +913,7 @@ int main(int argc, char** argv) {
 
     auto loadResources = [&app, &setupIBL] (const utils::Path& filename) {
         // Load external textures and buffers.
-        std::string const gltfPath = filename.getAbsolutePath();
+        std::string const gltfPath = filename.isEmpty() ? "" : filename.getAbsolutePath();
         ResourceConfiguration configuration = {};
         configuration.engine = app.engine;
         configuration.gltfPath = gltfPath.c_str();
@@ -946,18 +1067,25 @@ int main(int argc, char** argv) {
             app.mouseUvX = std::clamp(app.mouseUvX, 0.0f, 1.0f);
             app.mouseUvY = std::clamp(app.mouseUvY, 0.0f, 1.0f);
 
+            float foveationUvX = app.mouseUvX;
+            float foveationUvY = app.mouseUvY;
+            app.usingGazeInput = app.gazePlayback.update(
+                    ImGui::GetTime(), &foveationUvX, &foveationUvY);
+            app.mouseUvX = foveationUvX;
+            app.mouseUvY = foveationUvY;
+
             FoveatedRenderingOptions options;
             options.enabled = app.foveationConfig.enabled;
             options.fovealRadius = app.foveationConfig.fovealRadius;
             options.peripheralRadius = app.foveationConfig.peripheralRadius;
             options.transitionKeep = app.foveationConfig.transitionKeep;
             options.outerKeep = app.foveationConfig.outerKeep;
-            options.fovealCenter = { app.mouseUvX, app.mouseUvY };
+            options.fovealCenter = { foveationUvX, foveationUvY };
             view->setFoveatedRenderingOptions(options);
 
             if (app.scene.foveationMaterialInstance) {
                 app.scene.foveationMaterialInstance->setParameter(
-                    "mouseUv", float2{ app.mouseUvX, app.mouseUvY });
+                    "mouseUv", float2{ foveationUvX, foveationUvY });
                 // Update foveal/peripheral zone radii from config
                 app.scene.foveationMaterialInstance->setParameter(
                     "innerRadius", app.foveationConfig.fovealRadius);
@@ -967,7 +1095,12 @@ int main(int argc, char** argv) {
 
             static int frameCounter = 0;
             if (++frameCounter % 60 == 0) {
-                std::cout << "Mouse UV: " << app.mouseUvX << ", " << app.mouseUvY << "\tapp.mouseX:" << app.mouseX << ", app.mouseY:" << app.mouseY << "\tvp.left:" << vp.left << ", vp.bottom:" << vp.bottom << ", vp.width:" << vp.width << ", vp.height:" << vp.height << std::endl; 
+                std::cout << (app.usingGazeInput ? "Gaze UV: " : "Mouse UV: ")
+                          << foveationUvX << ", " << foveationUvY
+                          << "\tapp.mouseX:" << app.mouseX << ", app.mouseY:" << app.mouseY
+                          << "\tvp.left:" << vp.left << ", vp.bottom:" << vp.bottom
+                          << ", vp.width:" << vp.width << ", vp.height:" << vp.height
+                          << std::endl;
             }
 
             auto& automation = *app.automationEngine;
