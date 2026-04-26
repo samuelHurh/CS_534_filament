@@ -186,7 +186,20 @@ vec4 filamentFoveationNeighborColorFallback(const vec4 color) {
     float phase = mod(frag.x + frag.y, 8.0);
     if (phase < minPhase) {
         float dx = minPhase - phase;
-        return color + dFdx(color) * dx;
+        // return color + dFdx(color) * dx;
+        // prevent white artifacts at edges
+        vec4 ddx = dFdx(color);
+        vec4 ddy = dFdy(color);
+
+        vec4 extrapolated = color + ddx * dx;
+        vec3 localRange = abs(ddx.rgb) + abs(ddy.rgb) + vec3(1e-4);
+        extrapolated.rgb = clamp(extrapolated.rgb,
+                max(color.rgb - 2.0 * localRange, vec3(0.0)),
+                color.rgb + 2.0 * localRange);
+
+        float edgeStrength = max(length(ddx.rgb), length(ddy.rgb));
+        float edgeBlend = smoothstep(0.2, 0.8, edgeStrength);
+        return mix(extrapolated, color, edgeBlend);
     }
     return color;
 }
