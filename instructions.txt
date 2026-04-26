@@ -1,0 +1,54 @@
+Benchmark scene setup
+=====================
+
+This project uses external glTF scenes for benchmarking. These assets are not
+committed into this repository because they are large and maintained separately.
+
+Fetch the Sponza benchmark scene
+--------------------------------
+
+From the Filament repo root:
+
+    cd ~/filament
+    git clone --depth 1 https://github.com/KhronosGroup/glTF-Sample-Assets.git external-gltf-assets
+
+Run Sponza in gltf_viewer
+-------------------------
+
+From the built samples directory:
+
+    cd ~/filament/out/cmake-release/samples
+    ./gltf_viewer -a opengl -s --camera flight ~/filament/external-gltf-assets/Models/Sponza/glTF/Sponza.gltf
+
+Useful camera controls in flight mode:
+
+    W / S     forward / backward
+    A / D     left / right
+    E / Q     up / down
+    mouse drag to look around
+
+Gaze input
+----------
+
+The shared gaze playback looks for this CSV:
+
+    gaze_log_20260406_080818.csv
+
+Place it at the repo root:
+
+    ~/filament/gaze_log_20260406_080818.csv
+
+or use the existing local Windows Downloads path if available:
+
+    /mnt/c/Users/shurh/Downloads/gaze_log_20260406_080818.csv
+
+Git note
+--------
+
+Do not commit external-gltf-assets/ as a normal nested Git repository. If it was
+accidentally staged with "git add .", unstage it with:
+
+    git rm --cached external-gltf-assets
+
+Then keep it ignored locally, or add it as a proper submodule if the team decides
+that is the preferred workflow.
