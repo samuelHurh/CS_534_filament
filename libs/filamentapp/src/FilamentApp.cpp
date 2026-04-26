@@ -35,6 +35,7 @@
 #include <filament/Camera.h>
 #include <filament/Material.h>
 #include <filament/MaterialInstance.h>
+#include <filament/Options.h>
 #include <filament/Renderer.h>
 #include <filament/RenderableManager.h>
 #include <filament/Scene.h>
@@ -74,8 +75,12 @@
 #include <stb_image.h>
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdlib>
+#include <fstream>
 #include <memory>
+#include <sstream>
 #include <vector>
 
 #include <stdint.h>
@@ -90,6 +95,124 @@ using namespace utils;
 namespace {
 
 using namespace filament::backend;
+
+class GazePlayback {
+public:
+    bool load() {
+        static constexpr const char* PATHS[] = {
+                "gaze_log_20260406_080818.csv",
+                "../gaze_log_20260406_080818.csv",
+                "../../gaze_log_20260406_080818.csv",
+                "../../../gaze_log_20260406_080818.csv",
+                "/home/shurh/filament/gaze_log_20260406_080818.csv",
+                "/mnt/c/Users/shurh/Downloads/gaze_log_20260406_080818.csv",
+        };
+
+        for (char const* path : PATHS) {
+            std::ifstream in(path);
+            if (!in) {
+                continue;
+            }
+
+            std::string line;
+            std::getline(in, line); // header
+
+            double firstTime = -1.0;
+            std::vector<Sample> parsed;
+            while (std::getline(in, line)) {
+                std::stringstream ss(line);
+                std::string token;
+                std::array<std::string, 14> columns;
+                size_t column = 0;
+                while (column < columns.size() && std::getline(ss, token, ',')) {
+                    columns[column++] = token;
+                }
+                if (column < columns.size()) {
+                    continue;
+                }
+
+                try {
+                    double const time = std::stod(columns[0]);
+                    if (firstTime < 0.0) {
+                        firstTime = time;
+                    }
+                    parsed.push_back({
+                            time - firstTime,
+                            std::stof(columns[11]),
+                            std::stof(columns[12]),
+                            std::stof(columns[13]),
+                    });
+                } catch (...) {
+                    // Skip malformed rows and keep the playback stream usable.
+                }
+            }
+
+            if (!parsed.empty()) {
+                mSamples = std::move(parsed);
+                mCursor = 0;
+                mStartTime = -1.0;
+                mLoaded = true;
+                std::cout << "Loaded shared gaze playback from " << path << " ("
+                          << mSamples.size() << " samples)" << std::endl;
+                return true;
+            }
+        }
+
+        std::cout << "No shared gaze CSV found; FilamentApp gaze input disabled." << std::endl;
+        return false;
+    }
+
+    bool update(double now, float* outUvX, float* outUvY) {
+        if (!mLoaded || mSamples.empty()) {
+            return false;
+        }
+        if (mStartTime < 0.0) {
+            mStartTime = now;
+        }
+
+        double elapsed = now - mStartTime;
+        double const duration = mSamples.back().time;
+        if (duration > 0.0) {
+            elapsed = std::fmod(elapsed, duration);
+        }
+
+        if (mCursor + 1 >= mSamples.size() || elapsed < mSamples[mCursor].time) {
+            mCursor = 0;
+        }
+        while (mCursor + 1 < mSamples.size() && mSamples[mCursor + 1].time < elapsed) {
+            ++mCursor;
+        }
+
+        Sample gaze = mSamples[mCursor];
+        if (mCursor + 1 < mSamples.size()) {
+            Sample const& a = mSamples[mCursor];
+            Sample const& b = mSamples[mCursor + 1];
+            double const span = std::max(1e-6, b.time - a.time);
+            float const t = float((elapsed - a.time) / span);
+            gaze.dx = a.dx + (b.dx - a.dx) * t;
+            gaze.dy = a.dy + (b.dy - a.dy) * t;
+            gaze.dz = a.dz + (b.dz - a.dz) * t;
+        }
+
+        float const dz = std::abs(gaze.dz) < 1e-4f ? 1.0f : gaze.dz;
+        *outUvX = std::clamp(0.5f + gaze.dx / dz, 0.0f, 1.0f);
+        *outUvY = std::clamp(0.5f + gaze.dy / dz, 0.0f, 1.0f);
+        return true;
+    }
+
+private:
+    struct Sample {
+        double time = 0.0;
+        float dx = 0.0f;
+        float dy = 0.0f;
+        float dz = 1.0f;
+    };
+
+    std::vector<Sample> mSamples;
+    size_t mCursor = 0;
+    double mStartTime = -1.0;
+    bool mLoaded = false;
+};
 
 #if defined(FILAMENT_SUPPORTS_WEBGPU)
     #if defined(__ANDROID__)
@@ -153,6 +276,11 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
         PreRenderCallback preRender, PostRenderCallback postRender,
         size_t width, size_t height) {
     mWindowTitle = config.title;
+    GazePlayback gazePlayback;
+    bool const gazeLoaded = gazePlayback.load();
+    float gazeUvX = 0.5f;
+    float gazeUvY = 0.5f;
+
     std::unique_ptr<FilamentApp::Window> window(
             new FilamentApp::Window(this, config, config.title, width, height));
 
@@ -390,6 +518,32 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
                 (float)(1.0f / 60.0f);
         mTime = now;
 
+        bool gazeActive = false;
+        if (gazeLoaded) {
+            double const gazeNow = double(now) / double(frequency);
+            gazeActive = gazePlayback.update(gazeNow, &gazeUvX, &gazeUvY);
+            if (gazeActive) {
+                mHasGazeInput = true;
+                mGazeUv = { gazeUvX, gazeUvY };
+
+                FoveatedRenderingOptions options;
+                options.enabled = true;
+                options.fovealRadius = 0.15f;
+                options.peripheralRadius = 0.35f;
+                options.transitionKeep = 0.5f;
+                options.outerKeep = 0.125f;
+                options.fovealCenter = { gazeUvX, gazeUvY };
+                window->mMainView->getView()->setFoveatedRenderingOptions(options);
+
+                static int frameCounter = 0;
+                if (++frameCounter % 60 == 0) {
+                    std::cout << "Shared Gaze UV: " << gazeUvX << ", " << gazeUvY << std::endl;
+                }
+            }
+        } else {
+            mHasGazeInput = false;
+        }
+
         // Populate the UI scene, regardless of whether Filament wants to a skip frame. We should
         // always let ImGui generate a command list; if it skips a frame it'll destroy its widgets.
         if (mImGuiHelper) {
@@ -422,6 +576,21 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
             // outside of the client area; see the imgui SDL example.
             if ((SDL_GetWindowFlags(window->mWindow) & SDL_WINDOW_INPUT_FOCUS) != 0) {
                 io.MousePos = ImVec2((float)mx, (float)my);
+            }
+
+            if (gazeActive) {
+                float const sidebarWidth = float(mSidebarWidth);
+                ImVec2 const markerCenter{
+                        sidebarWidth + gazeUvX * std::max(0.0f, io.DisplaySize.x - sidebarWidth),
+                        (1.0f - gazeUvY) * io.DisplaySize.y };
+                ImDrawList* drawList = ImGui::GetForegroundDrawList();
+                drawList->AddCircle(markerCenter, 12.0f, IM_COL32(0, 255, 80, 255), 32, 2.0f);
+                drawList->AddLine({ markerCenter.x - 18.0f, markerCenter.y },
+                        { markerCenter.x + 18.0f, markerCenter.y },
+                        IM_COL32(0, 255, 80, 255), 1.5f);
+                drawList->AddLine({ markerCenter.x, markerCenter.y - 18.0f },
+                        { markerCenter.x, markerCenter.y + 18.0f },
+                        IM_COL32(0, 255, 80, 255), 1.5f);
             }
 
             // Populate the UI Scene.

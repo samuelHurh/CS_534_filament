@@ -828,7 +828,7 @@ int main(int argc, char** argv) {
     app.config.iblDirectory = FilamentApp::getRootAssetsPath() + DEFAULT_IBL;
 
     int const optionIndex = handleCommandLineArguments(argc, argv, &app);
-    app.usingGazeInput = app.gazePlayback.load();
+    app.usingGazeInput = false;
 
     utils::Path filename;
     int const num_args = argc - optionIndex;
@@ -1069,8 +1069,14 @@ int main(int argc, char** argv) {
 
             float foveationUvX = app.mouseUvX;
             float foveationUvY = app.mouseUvY;
-            app.usingGazeInput = app.gazePlayback.update(
-                    ImGui::GetTime(), &foveationUvX, &foveationUvY);
+            if (FilamentApp::get().hasGazeInput()) {
+                float2 const gazeUv = FilamentApp::get().getGazeUv();
+                foveationUvX = gazeUv.x;
+                foveationUvY = gazeUv.y;
+                app.usingGazeInput = true;
+            } else {
+                app.usingGazeInput = false;
+            }
             app.mouseUvX = foveationUvX;
             app.mouseUvY = foveationUvY;
 

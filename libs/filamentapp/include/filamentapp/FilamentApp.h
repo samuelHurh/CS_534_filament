@@ -30,6 +30,8 @@
 
 #include <camutils/Manipulator.h>
 
+#include <math/vec2.h>
+
 #include <utils/Path.h>
 #include <utils/Entity.h>
 
@@ -108,6 +110,8 @@ public:
     void addOffscreenView(filament::View* view) { mOffscreenViews.push_back(view); }
 
     size_t getSkippedFrameCount() const { return mSkippedFrames; }
+    bool hasGazeInput() const noexcept { return mHasGazeInput; }
+    filament::math::float2 getGazeUv() const noexcept { return mGazeUv; }
 
     void loadIBL(std::string_view path);
 
@@ -271,6 +275,8 @@ private:
     float mCameraNear = 0.1f;
     float mCameraFar = 100.0f;
     bool mReconfigureCameras = false;
+    bool mHasGazeInput = false;
+    filament::math::float2 mGazeUv = { 0.5f, 0.5f };
     uint8_t mFroxelInfoAge = 0x42;
     uint8_t mFroxelGridEnabled = 0;
     uint8_t mDirectionalShadowFrustumEnabled = 0x2;
