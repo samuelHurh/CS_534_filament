@@ -228,6 +228,14 @@ struct GazePlayback {
     }
 };
 
+struct CameraWalkthrough {
+    bool initialized = false;
+    double elapsedTime = 0.0;
+    double3 startEye = double3{ 0.0, 0.0, 0.0 };
+    float3 startForward = float3{ 0.0f, 0.0f, -1.0f };
+    float3 startUp = float3{ 0.0f, 1.0f, 0.0f };
+};
+
 struct App {
     float mouseX = 0.0f;
     float mouseY = 0.0f;
@@ -238,6 +246,7 @@ struct App {
     // Foveated rendering configuration
     FoveationConfig foveationConfig;
     GazePlayback gazePlayback;
+    CameraWalkthrough walkthrough;
     bool usingGazeInput = false;
 
     Engine* engine;
@@ -338,6 +347,8 @@ static void printUsage(char* name) {
         "           W / S: forward / backward\n"
         "           A / D: left / right\n"
         "           E / Q: up / down\n\n"
+        "       This build also scripts the flight camera to walk forward and look around\n"
+        "       the scene while keeping foveation settings unchanged.\n\n"
         "   --eyes=<stereoscopic eyes>, -y <stereoscopic eyes>\n"
         "       Sets the number of stereoscopic eyes (default: 2) when stereoscopic rendering is\n"
         "       enabled.\n\n"
@@ -1375,6 +1386,7 @@ int main(int argc, char** argv) {
     };
 
     auto animate = [&app](Engine*, View*, double now) {
+        app.walkthrough.elapsedTime = now;
         app.resourceLoader->asyncUpdateLoad();
 
         // Optionally fit the model into a unit cube at the origin.
@@ -1451,6 +1463,82 @@ int main(int argc, char** argv) {
             double const aspectRatio = (double) vp.width / vp.height;
             camera->setScaling({1.0 / aspectRatio, 1.0});
         }
+
+            if (app.config.cameraMode == camutils::Mode::FREE_FLIGHT && currentCamera == 0) {
+                Camera* camera = app.mainCamera;
+                if (camera) {
+                if (!app.walkthrough.initialized) {
+                    app.walkthrough.startEye = camera->getPosition() + double3{ 0.0, 0.75, 0.0 };
+                    app.walkthrough.startForward = normalize(camera->getForwardVector());
+                    app.walkthrough.startUp = normalize(camera->getUpVector());
+                    app.walkthrough.initialized = true;
+                }
+
+                double const elapsed = app.walkthrough.elapsedTime;
+                double const walkDuration = 6.0;
+                double const cycle = 12.0;
+                double const phase = std::fmod(elapsed, cycle);
+
+                double3 const forward = double3{
+                    app.walkthrough.startForward.x,
+                    app.walkthrough.startForward.y,
+                    app.walkthrough.startForward.z };
+                double3 const up = double3{
+                    app.walkthrough.startUp.x,
+                    app.walkthrough.startUp.y,
+                    app.walkthrough.startUp.z };
+                double3 const right = normalize(cross(forward, up));
+
+                double3 eye = app.walkthrough.startEye;
+                double3 center = eye + forward * 5.0;
+                double3 lookUp = up;
+
+                if (phase < walkDuration) {
+                    double const walkSpeed = 0.85;
+                    double const bob = 0.08 * std::sin(phase * 6.0);
+                    double const sway = 0.04 * std::sin(phase * 2.4);
+                    eye = app.walkthrough.startEye + forward * (walkSpeed * phase)
+                        + up * bob + right * sway;
+
+                    float const yaw = 0.20f * std::sin(float(phase) * 1.2f);
+                    float const pitch = 0.07f * std::sin(float(phase) * 2.0f);
+                    float3 const rightF = float3{
+                        app.walkthrough.startUp.x == 0.0f ? right.x : right.x,
+                        app.walkthrough.startUp.y == 0.0f ? right.y : right.y,
+                        app.walkthrough.startUp.z == 0.0f ? right.z : right.z };
+                    float3 const upF = float3{
+                        app.walkthrough.startUp.x,
+                        app.walkthrough.startUp.y,
+                        app.walkthrough.startUp.z };
+                    float3 const lookDirection = normalize(
+                        (mat3f::rotation(pitch, rightF) * mat3f::rotation(yaw, upF)) *
+                        float3{
+                            app.walkthrough.startForward.x,
+                            app.walkthrough.startForward.y,
+                            app.walkthrough.startForward.z });
+                    center = eye + double3{
+                        lookDirection.x,
+                        lookDirection.y,
+                        lookDirection.z } * 10.0;
+                } else {
+                    double const lookPhase = phase - walkDuration;
+                    double const orbitRadius = 1.8;
+                    double const orbitAngle = lookPhase * 0.55;
+                    double3 const pivot = app.walkthrough.startEye + forward * 5.0;
+                    eye = pivot + double3{
+                        std::cos(orbitAngle) * orbitRadius,
+                        0.35 * std::sin(lookPhase * 1.2),
+                        std::sin(orbitAngle) * orbitRadius };
+                    center = pivot + double3{
+                        0.5 * std::sin(lookPhase * 0.8),
+                        0.25 * std::sin(lookPhase * 0.9),
+                        0.5 * std::cos(lookPhase * 0.8) };
+                    lookUp = double3{ 0.0, 1.0, 0.0 };
+                }
+
+                camera->lookAt(eye, center, lookUp);
+                }
+            }
 
         static bool stereoscopicEnabled = false;
         if (stereoscopicEnabled != view->getStereoscopicOptions().enabled) {
