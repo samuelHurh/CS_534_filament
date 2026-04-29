@@ -409,6 +409,20 @@ static Material* loadMaterialFromFile(Engine* engine, const char* path) {
     return material;
 }
 
+static bool parseFloatArgument(std::string const& arg, float* out) {
+    try {
+        size_t consumed = 0;
+        float const value = std::stof(arg, &consumed);
+        if (consumed != arg.size()) {
+            return false;
+        }
+        *out = value;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 // Advanced: Apply per-pixel foveation using a screen-space shader effect
 // This reduces shading quality in the periphery (optional, more aggressive)
 static void createFoveationQualityOverlay(Engine* engine, Scene* scene, App& app,
@@ -428,8 +442,8 @@ static void createFoveationOverlay(Engine* engine, Scene* scene, App& app) {
     auto mi = material->createInstance();
 
     mi->setParameter("mouseUv", float2{ app.mouseUvX, app.mouseUvY });
-    mi->setParameter("innerRadius", 0.12f);
-    mi->setParameter("outerRadius", 0.35f);
+    mi->setParameter("innerRadius", app.foveationConfig.fovealRadius);
+    mi->setParameter("outerRadius", app.foveationConfig.peripheralRadius);
 
     auto& em = EntityManager::get();
     Entity e = em.create();
@@ -454,6 +468,14 @@ static void createFoveationOverlay(Engine* engine, Scene* scene, App& app) {
 }
 
 static int handleCommandLineArguments(int argc, char* argv[], App* app) {
+    enum {
+        OPT_FOVEATION = 1000,
+        OPT_NO_FOVEATION,
+        OPT_FOVEAL_RADIUS,
+        OPT_PERIPHERAL_RADIUS,
+        OPT_TRANSITION_KEEP,
+        OPT_OUTER_KEEP,
+    };
     static constexpr const char* OPTSTR = "ha:f:i:usc:rt:y:b:evg:dw:";
     static const utils::getopt::option OPTIONS[] = {
         { "help",              utils::getopt::no_argument,          nullptr, 'h' },
@@ -472,6 +494,12 @@ static int handleCommandLineArguments(int argc, char* argv[], App* app) {
         { "vulkan-gpu-hint",   utils::getopt::required_argument,    nullptr, 'g' },
         { "screenshot-as-ppm", utils::getopt::no_argument,          nullptr, 'd' },
         { "webgpu-backend",    utils::getopt::required_argument,    nullptr, 'w' },
+        { "foveation",         utils::getopt::no_argument,          nullptr, OPT_FOVEATION },
+        { "no-foveation",      utils::getopt::no_argument,          nullptr, OPT_NO_FOVEATION },
+        { "foveal-radius",     utils::getopt::required_argument,    nullptr, OPT_FOVEAL_RADIUS },
+        { "peripheral-radius", utils::getopt::required_argument,    nullptr, OPT_PERIPHERAL_RADIUS },
+        { "transition-keep",   utils::getopt::required_argument,    nullptr, OPT_TRANSITION_KEEP },
+        { "outer-keep",        utils::getopt::required_argument,    nullptr, OPT_OUTER_KEEP },
         { nullptr, 0, nullptr, 0 }
     };
     int opt;
@@ -555,6 +583,48 @@ static int handleCommandLineArguments(int argc, char* argv[], App* app) {
             }
             case 'w': {
                 app->config.forcedWebGPUBackend = samples::parseArgumentsForBackend(arg);
+                break;
+            }
+            case OPT_FOVEATION:
+                app->foveationConfig.enabled = true;
+                break;
+            case OPT_NO_FOVEATION:
+                app->foveationConfig.enabled = false;
+                break;
+            case OPT_FOVEAL_RADIUS: {
+                float value = app->foveationConfig.fovealRadius;
+                if (parseFloatArgument(arg, &value)) {
+                    app->foveationConfig.fovealRadius = value;
+                } else {
+                    std::cerr << "Invalid foveal radius: " << arg << std::endl;
+                }
+                break;
+            }
+            case OPT_PERIPHERAL_RADIUS: {
+                float value = app->foveationConfig.peripheralRadius;
+                if (parseFloatArgument(arg, &value)) {
+                    app->foveationConfig.peripheralRadius = value;
+                } else {
+                    std::cerr << "Invalid peripheral radius: " << arg << std::endl;
+                }
+                break;
+            }
+            case OPT_TRANSITION_KEEP: {
+                float value = app->foveationConfig.transitionKeep;
+                if (parseFloatArgument(arg, &value)) {
+                    app->foveationConfig.transitionKeep = value;
+                } else {
+                    std::cerr << "Invalid transition keep: " << arg << std::endl;
+                }
+                break;
+            }
+            case OPT_OUTER_KEEP: {
+                float value = app->foveationConfig.outerKeep;
+                if (parseFloatArgument(arg, &value)) {
+                    app->foveationConfig.outerKeep = value;
+                } else {
+                    std::cerr << "Invalid outer keep: " << arg << std::endl;
+                }
                 break;
             }
         }
