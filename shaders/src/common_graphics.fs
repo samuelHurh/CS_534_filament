@@ -149,6 +149,10 @@ vec4 filamentValidationNeighborColorFallback(const vec4 color) { return color; }
 // Foveated fragment subsampling (same phase pattern as validation; dFdx fill)
 //------------------------------------------------------------------------------
 
+// Tunable phase period for foveation subsampling. Larger values increase
+// sensitivity to ringKeep / outerKeep.
+const float FILAMENT_FOVEATION_PHASE_PERIOD = 128.0;
+
 bool filamentFoveationShouldDropFragment() {
     if (frameUniforms.foveationEnabled < 0.5) {
         return false;
@@ -162,9 +166,9 @@ bool filamentFoveationShouldDropFragment() {
     float ringKeep = clamp(frameUniforms.foveationTransitionKeep, 0.001, 1.0);
     float outerKeep = clamp(frameUniforms.foveationOuterKeep, 0.001, 1.0);
     float keep = (dist >= frameUniforms.peripheralRadius) ? outerKeep : ringKeep;
-    float minPhase = 8.0 * (1.0 - keep);
+    float minPhase = FILAMENT_FOVEATION_PHASE_PERIOD * (1.0 - keep);
     highp vec2 frag = floor(fragPx);
-    float phase = mod(frag.x + frag.y, 8.0);
+    float phase = mod(frag.x + frag.y, FILAMENT_FOVEATION_PHASE_PERIOD);
     return phase < minPhase;
 }
 
@@ -181,9 +185,9 @@ vec4 filamentFoveationNeighborColorFallback(const vec4 color) {
     float ringKeep = clamp(frameUniforms.foveationTransitionKeep, 0.001, 1.0);
     float outerKeep = clamp(frameUniforms.foveationOuterKeep, 0.001, 1.0);
     float keep = (dist >= frameUniforms.peripheralRadius) ? outerKeep : ringKeep;
-    float minPhase = 8.0 * (1.0 - keep);
+    float minPhase = FILAMENT_FOVEATION_PHASE_PERIOD * (1.0 - keep);
     highp vec2 frag = floor(fragPx);
-    float phase = mod(frag.x + frag.y, 8.0);
+    float phase = mod(frag.x + frag.y, FILAMENT_FOVEATION_PHASE_PERIOD);
     if (phase < minPhase) {
         float dx = minPhase - phase;
         // return color + dFdx(color) * dx;
