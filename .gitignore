@@ -25,6 +25,7 @@ results
 /filament-assets
 /venv
 
+
 # ===== Your additions =====
 *.filamat
 *.o
@@ -36,3 +37,4 @@ build/
 CMakeFiles/
 CMakeCache.txt
 external-gltf-assets/
+benchmarks/
