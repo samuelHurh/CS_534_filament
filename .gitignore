@@ -36,3 +36,4 @@ build/
 CMakeFiles/
 CMakeCache.txt
 external-gltf-assets/
+benchmarks/
