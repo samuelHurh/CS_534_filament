@@ -49,6 +49,11 @@ struct Config {
 
     // Asynchronous mode for Engine
     filament::backend::AsynchronousMode asynchronousMode = filament::backend::AsynchronousMode::NONE;
+
+    // Allow FilamentApp to load gaze playback and enable foveated rendering from shared gaze data.
+    // Set this to false to prevent FilamentApp from enabling foveation automatically (e.g., when
+    // the application wants to disable foveation via command-line flags).
+    bool allowGazePlayback = true;
 };
 
 #endif // TNT_FILAMENT_SAMPLE_CONFIG_H

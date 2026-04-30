@@ -658,6 +658,11 @@ void ViewerGui::keyPressEvent(int charCode) {
 void ViewerGui::updateUserInterface() {
     using namespace filament;
 
+    // If sidebar width is zero, skip rendering the ImGui sidebar entirely.
+    if (mSidebarWidth == 0) {
+        return;
+    }
+
     auto& tm = mEngine->getTransformManager();
     auto& rm = mEngine->getRenderableManager();
     auto& lm = mEngine->getLightManager();

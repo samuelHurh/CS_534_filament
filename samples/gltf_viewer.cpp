@@ -110,6 +110,9 @@ struct FoveationConfig {
     
     // Enable/disable foveated rendering
     bool enabled = true;
+
+    // Keep the foveal region centered on the screen instead of following input.
+    bool lockToCenter = false;
 };
 
 struct GazePlayback {
@@ -228,6 +231,14 @@ struct GazePlayback {
     }
 };
 
+struct CameraWalkthrough {
+    bool initialized = false;
+    double elapsedTime = 0.0;
+    double3 startEye = double3{ 0.0, 0.0, 0.0 };
+    float3 startForward = float3{ 0.0f, 0.0f, -1.0f };
+    float3 startUp = float3{ 0.0f, 1.0f, 0.0f };
+};
+
 struct App {
     float mouseX = 0.0f;
     float mouseY = 0.0f;
@@ -238,6 +249,7 @@ struct App {
     // Foveated rendering configuration
     FoveationConfig foveationConfig;
     GazePlayback gazePlayback;
+    CameraWalkthrough walkthrough;
     bool usingGazeInput = false;
 
     Engine* engine;
@@ -263,6 +275,8 @@ struct App {
     bool actualSize = false;
     bool originIsFarAway = false;
     float originDistance = 1.0f;
+    bool showFoveaCircle = false;
+    bool hideLeftPanel = false;
 
     struct Scene {
         Material *foveationMaterial = nullptr;
@@ -338,6 +352,16 @@ static void printUsage(char* name) {
         "           W / S: forward / backward\n"
         "           A / D: left / right\n"
         "           E / Q: up / down\n\n"
+        "   --foveation\n"
+        "       Enable foveated rendering.\n\n"
+        "   --no-foveation\n"
+        "       Disable foveated rendering.\n\n"
+        "   --lock-fovea-center\n"
+        "       Keep the foveal region fixed at the screen center instead of tracking input.\n\n"
+        "   --hide-left-panel\n"
+        "       Hide the viewer's left-side UI panel.\n\n"
+        "       This build also scripts the flight camera to walk forward and look around\n"
+        "       the scene while keeping foveation settings unchanged.\n\n"
         "   --eyes=<stereoscopic eyes>, -y <stereoscopic eyes>\n"
         "       Sets the number of stereoscopic eyes (default: 2) when stereoscopic rendering is\n"
         "       enabled.\n\n"
@@ -461,6 +485,15 @@ static int handleCommandLineArguments(int argc, char* argv[], App* app) {
         { "vulkan-gpu-hint",   utils::getopt::required_argument,    nullptr, 'g' },
         { "screenshot-as-ppm", utils::getopt::no_argument,          nullptr, 'd' },
         { "webgpu-backend",    utils::getopt::required_argument,    nullptr, 'w' },
+        { "foveation",         utils::getopt::no_argument,          nullptr, 'F' },
+        { "no-foveation",      utils::getopt::no_argument,          nullptr, 'N' },
+        { "lock-fovea-center", utils::getopt::no_argument,          nullptr, 'z' },
+        { "hide-left-panel",   utils::getopt::no_argument,          nullptr, 'p' },
+        { "draw-fovea-circle", utils::getopt::no_argument,          nullptr, 'Z' },
+        { "foveal-radius",     utils::getopt::required_argument,    nullptr, 'R' },
+        { "peripheral-radius", utils::getopt::required_argument,    nullptr, 'P' },
+        { "transition-keep",   utils::getopt::required_argument,    nullptr, 'T' },
+        { "outer-keep",        utils::getopt::required_argument,    nullptr, 'O' },
         { nullptr, 0, nullptr, 0 }
     };
     int opt;
@@ -510,6 +543,41 @@ static int handleCommandLineArguments(int argc, char* argv[], App* app) {
             }
             case 'e':
                 app->config.headless = true;
+                break;
+            case 'F':
+                app->foveationConfig.enabled = true;
+                break;
+            case 'N':
+                app->foveationConfig.enabled = false;
+                break;
+            case 'z':
+                app->foveationConfig.lockToCenter = true;
+                break;
+            case 'p':
+                app->hideLeftPanel = true;
+                break;
+            case 'Z':
+                app->showFoveaCircle = true;
+                break;
+            case 'R':
+                try {
+                    app->foveationConfig.fovealRadius = std::stof(arg);
+                } catch (...) { }
+                break;
+            case 'P':
+                try {
+                    app->foveationConfig.peripheralRadius = std::stof(arg);
+                } catch (...) { }
+                break;
+            case 'T':
+                try {
+                    app->foveationConfig.transitionKeep = std::stof(arg);
+                } catch (...) { }
+                break;
+            case 'O':
+                try {
+                    app->foveationConfig.outerKeep = std::stof(arg);
+                } catch (...) { }
                 break;
             case 'i':
                 app->config.iblDirectory = arg;
@@ -960,7 +1028,7 @@ int main(int argc, char** argv) {
     auto setup = [&](Engine* engine, View* view, Scene* scene) {
         app.engine = engine;
         app.names = new NameComponentManager(EntityManager::get());
-        app.viewer = new ViewerGui(engine, scene, view, 410);
+        app.viewer = new ViewerGui(engine, scene, view, app.hideLeftPanel ? 0 : 410);
         app.viewer->getSettings().viewer.autoScaleEnabled = !app.actualSize;
 
         engine->enableAccurateTranslations();
@@ -1080,23 +1148,53 @@ int main(int argc, char** argv) {
             app.mouseUvX = foveationUvX;
             app.mouseUvY = foveationUvY;
 
+            float2 const fovealCenter = app.foveationConfig.lockToCenter
+                    ? float2{ 0.5f, 0.5f }
+                    : float2{ foveationUvX, foveationUvY };
+
             FoveatedRenderingOptions options;
             options.enabled = app.foveationConfig.enabled;
             options.fovealRadius = app.foveationConfig.fovealRadius;
             options.peripheralRadius = app.foveationConfig.peripheralRadius;
             options.transitionKeep = app.foveationConfig.transitionKeep;
             options.outerKeep = app.foveationConfig.outerKeep;
-            options.fovealCenter = { foveationUvX, foveationUvY };
+            options.fovealCenter = fovealCenter;
             view->setFoveatedRenderingOptions(options);
 
             if (app.scene.foveationMaterialInstance) {
                 app.scene.foveationMaterialInstance->setParameter(
-                    "mouseUv", float2{ foveationUvX, foveationUvY });
+                    "mouseUv", fovealCenter);
                 // Update foveal/peripheral zone radii from config
                 app.scene.foveationMaterialInstance->setParameter(
                     "innerRadius", app.foveationConfig.fovealRadius);
                 app.scene.foveationMaterialInstance->setParameter(
                     "outerRadius", app.foveationConfig.peripheralRadius);
+            }
+
+            // Optionally draw a circle around the applied foveal center for debugging.
+            if (app.showFoveaCircle) {
+                ImDrawList* dl = ImGui::GetForegroundDrawList();
+                ImGuiIO& io = ImGui::GetIO();
+                float scaleX = io.DisplayFramebufferScale.x;
+                float scaleY = io.DisplayFramebufferScale.y;
+                // Convert the normalized foveal center into ImGui screen coordinates.
+                // This stays tied to the rendered viewport and does not depend on the sidebar.
+                ImVec2 center_pt(
+                        (vp.left + fovealCenter.x * float(vp.width)) / scaleX,
+                        (vp.bottom + (1.0f - fovealCenter.y) * float(vp.height)) / scaleY);
+                float radius_points = 30.0f;
+                dl->AddCircle(center_pt, radius_points, IM_COL32(255, 0, 0, 200), 32, 2.0f);
+                
+                static int circleDbgCounter = 0;
+                if (++circleDbgCounter % 60 == 0) {
+                    std::cout << "[Circle Debug] fovealCenter=(" << fovealCenter.x << "," << fovealCenter.y << ")"
+                              << " vp.left=" << vp.left << " vp.bottom=" << vp.bottom
+                              << " vp.width=" << vp.width << " vp.height=" << vp.height
+                              << " scaleX=" << scaleX << " scaleY=" << scaleY
+                              << " center_pt=(" << center_pt.x << "," << center_pt.y << ")"
+                              << " displaySize=(" << io.DisplaySize.x << "," << io.DisplaySize.y << ")"
+                              << std::endl;
+                }
             }
 
             static int frameCounter = 0;
@@ -1188,11 +1286,12 @@ int main(int argc, char** argv) {
             if (ImGui::CollapsingHeader("Foveated Rendering")) {
                 ImGui::Indent();
                 ImGui::Checkbox("Enable Foveation", &app.foveationConfig.enabled);
+                ImGui::Checkbox("Lock fovea to center", &app.foveationConfig.lockToCenter);
                 ImGui::SliderFloat("Foveal Radius", &app.foveationConfig.fovealRadius, 0.0f, 0.5f);
                 ImGui::SliderFloat("Peripheral Radius", &app.foveationConfig.peripheralRadius, 0.1f, 1.0f);
                 ImGui::SliderFloat("Transition keep", &app.foveationConfig.transitionKeep, 0.0f, 1.0f);
                 ImGui::SliderFloat("Outer keep", &app.foveationConfig.outerKeep, 0.0f, 1.0f);
-                ImGui::Text("Gaze Position (Mouse): %.3f, %.3f", app.mouseUvX, app.mouseUvY);
+                ImGui::Text("Fovea Center: %.3f, %.3f", fovealCenter.x, fovealCenter.y);
                 ImGui::Unindent();
             }
 
@@ -1375,6 +1474,7 @@ int main(int argc, char** argv) {
     };
 
     auto animate = [&app](Engine*, View*, double now) {
+        app.walkthrough.elapsedTime = now;
         app.resourceLoader->asyncUpdateLoad();
 
         // Optionally fit the model into a unit cube at the origin.
@@ -1451,6 +1551,82 @@ int main(int argc, char** argv) {
             double const aspectRatio = (double) vp.width / vp.height;
             camera->setScaling({1.0 / aspectRatio, 1.0});
         }
+
+            if (app.config.cameraMode == camutils::Mode::FREE_FLIGHT && currentCamera == 0) {
+                Camera* camera = app.mainCamera;
+                if (camera) {
+                if (!app.walkthrough.initialized) {
+                    app.walkthrough.startEye = camera->getPosition() + double3{ 0.0, 0.75, 0.0 };
+                    app.walkthrough.startForward = normalize(camera->getForwardVector());
+                    app.walkthrough.startUp = normalize(camera->getUpVector());
+                    app.walkthrough.initialized = true;
+                }
+
+                double const elapsed = app.walkthrough.elapsedTime;
+                double const walkDuration = 6.0;
+                double const cycle = 12.0;
+                double const phase = std::fmod(elapsed, cycle);
+
+                double3 const forward = double3{
+                    app.walkthrough.startForward.x,
+                    app.walkthrough.startForward.y,
+                    app.walkthrough.startForward.z };
+                double3 const up = double3{
+                    app.walkthrough.startUp.x,
+                    app.walkthrough.startUp.y,
+                    app.walkthrough.startUp.z };
+                double3 const right = normalize(cross(forward, up));
+
+                double3 eye = app.walkthrough.startEye;
+                double3 center = eye + forward * 5.0;
+                double3 lookUp = up;
+
+                if (phase < walkDuration) {
+                    double const walkSpeed = 0.85;
+                    double const bob = 0.08 * std::sin(phase * 6.0);
+                    double const sway = 0.04 * std::sin(phase * 2.4);
+                    eye = app.walkthrough.startEye + forward * (walkSpeed * phase)
+                        + up * bob + right * sway;
+
+                    float const yaw = 0.20f * std::sin(float(phase) * 1.2f);
+                    float const pitch = 0.07f * std::sin(float(phase) * 2.0f);
+                    float3 const rightF = float3{
+                        app.walkthrough.startUp.x == 0.0f ? right.x : right.x,
+                        app.walkthrough.startUp.y == 0.0f ? right.y : right.y,
+                        app.walkthrough.startUp.z == 0.0f ? right.z : right.z };
+                    float3 const upF = float3{
+                        app.walkthrough.startUp.x,
+                        app.walkthrough.startUp.y,
+                        app.walkthrough.startUp.z };
+                    float3 const lookDirection = normalize(
+                        (mat3f::rotation(pitch, rightF) * mat3f::rotation(yaw, upF)) *
+                        float3{
+                            app.walkthrough.startForward.x,
+                            app.walkthrough.startForward.y,
+                            app.walkthrough.startForward.z });
+                    center = eye + double3{
+                        lookDirection.x,
+                        lookDirection.y,
+                        lookDirection.z } * 10.0;
+                } else {
+                    double const lookPhase = phase - walkDuration;
+                    double const orbitRadius = 1.8;
+                    double const orbitAngle = lookPhase * 0.55;
+                    double3 const pivot = app.walkthrough.startEye + forward * 5.0;
+                    eye = pivot + double3{
+                        std::cos(orbitAngle) * orbitRadius,
+                        0.35 * std::sin(lookPhase * 1.2),
+                        std::sin(orbitAngle) * orbitRadius };
+                    center = pivot + double3{
+                        0.5 * std::sin(lookPhase * 0.8),
+                        0.25 * std::sin(lookPhase * 0.9),
+                        0.5 * std::cos(lookPhase * 0.8) };
+                    lookUp = double3{ 0.0, 1.0, 0.0 };
+                }
+
+                camera->lookAt(eye, center, lookUp);
+                }
+            }
 
         static bool stereoscopicEnabled = false;
         if (stereoscopicEnabled != view->getStereoscopicOptions().enabled) {
