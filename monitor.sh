@@ -12,6 +12,7 @@
 #   ./monitor.sh --runtime 90
 #   ./monitor.sh --runtime 60 --foveation --foveal-radius 0.2 --peripheral-radius 0.35 \
 #     --transition-keep 0.5 --outer-keep 0.125
+#   ./monitor.sh --lock-fovea-center
 #   ./monitor.sh -o run.csv --interval 2 --camera orbit
 #   ./monitor.sh --output-dir logs
 #   ./monitor.sh --viewer /path/to/gltf_viewer --scene /path/to/model.gltf
@@ -33,8 +34,12 @@ API="opengl"
 ACTUAL_SIZE=true
 CAMERA_MODE="flight"
 
+HIDE_LEFT_PANEL=false
+FORWARD_ARGS=()
+
 ENABLE_FOVEATION=false
 DISABLE_FOVEATION=false
+LOCK_FOVEA_CENTER=false
 FOVEAL_RADIUS=""
 PERIPHERAL_RADIUS=""
 TRANSITION_KEEP=""
@@ -61,10 +66,12 @@ Benchmark options:
   --api BACKEND              Render backend passed as -a (default: opengl)
   --camera MODE              Camera mode (default: flight)
   --no-actual-size           Do not pass -s to gltf_viewer
+  --hide-left-panel          Start viewer with left UI panel hidden
 
 Foveation options (all optional):
   --foveation
   --no-foveation
+  --lock-fovea-center
   --foveal-radius VALUE
   --peripheral-radius VALUE
   --transition-keep VALUE
@@ -119,6 +126,9 @@ build_default_outfile() {
   parts+=("cam-$(slug_token "$CAMERA_MODE")")
   parts+=("${actual_size_token}")
   parts+=("fov-${fov_state}")
+  if $LOCK_FOVEA_CENTER; then
+    parts+=("fovea-center-on")
+  fi
 
   if [[ -n "$FOVEAL_RADIUS" ]]; then
     parts+=("fr$(float_token "$FOVEAL_RADIUS")")
@@ -187,12 +197,20 @@ while [[ $# -gt 0 ]]; do
       ACTUAL_SIZE=false
       shift
       ;;
+    --hide-left-panel)
+      HIDE_LEFT_PANEL=true
+      shift
+      ;;
     --foveation)
       ENABLE_FOVEATION=true
       shift
       ;;
     --no-foveation)
       DISABLE_FOVEATION=true
+      shift
+      ;;
+    --lock-fovea-center)
+      LOCK_FOVEA_CENTER=true
       shift
       ;;
     --foveal-radius)
@@ -219,8 +237,14 @@ while [[ $# -gt 0 ]]; do
       usage
       ;;
     *)
-      echo "Unknown option: $1"
-      usage
+      # Forward unknown options to the viewer.
+      if [[ "$1" == --* ]] && [[ -n "${2:-}" ]] && [[ "${2:0:1}" != "-" ]]; then
+        FORWARD_ARGS+=("$1" "$2")
+        shift 2
+      else
+        FORWARD_ARGS+=("$1")
+        shift
+      fi
       ;;
   esac
 done
@@ -422,6 +446,9 @@ fi
 if $DISABLE_FOVEATION; then
   GLTF_ARGS+=("--no-foveation")
 fi
+if $LOCK_FOVEA_CENTER; then
+  GLTF_ARGS+=("--lock-fovea-center")
+fi
 if [[ -n "$FOVEAL_RADIUS" ]]; then
   GLTF_ARGS+=("--foveal-radius" "$FOVEAL_RADIUS")
 fi
@@ -433,6 +460,12 @@ if [[ -n "$TRANSITION_KEEP" ]]; then
 fi
 if [[ -n "$OUTER_KEEP" ]]; then
   GLTF_ARGS+=("--outer-keep" "$OUTER_KEEP")
+fi
+if $HIDE_LEFT_PANEL; then
+  GLTF_ARGS+=("--hide-left-panel")
+fi
+if [[ ${#FORWARD_ARGS[@]} -gt 0 ]]; then
+  GLTF_ARGS+=("${FORWARD_ARGS[@]}")
 fi
 GLTF_ARGS+=("$SCENE")
 

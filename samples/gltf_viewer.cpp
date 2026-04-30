@@ -110,6 +110,9 @@ struct FoveationConfig {
     
     // Enable/disable foveated rendering
     bool enabled = true;
+
+    // Keep the foveal region centered on the screen instead of following input.
+    bool lockToCenter = false;
 };
 
 struct GazePlayback {
@@ -272,6 +275,8 @@ struct App {
     bool actualSize = false;
     bool originIsFarAway = false;
     float originDistance = 1.0f;
+    bool showFoveaCircle = false;
+    bool hideLeftPanel = false;
 
     struct Scene {
         Material *foveationMaterial = nullptr;
@@ -347,6 +352,14 @@ static void printUsage(char* name) {
         "           W / S: forward / backward\n"
         "           A / D: left / right\n"
         "           E / Q: up / down\n\n"
+        "   --foveation\n"
+        "       Enable foveated rendering.\n\n"
+        "   --no-foveation\n"
+        "       Disable foveated rendering.\n\n"
+        "   --lock-fovea-center\n"
+        "       Keep the foveal region fixed at the screen center instead of tracking input.\n\n"
+        "   --hide-left-panel\n"
+        "       Hide the viewer's left-side UI panel.\n\n"
         "       This build also scripts the flight camera to walk forward and look around\n"
         "       the scene while keeping foveation settings unchanged.\n\n"
         "   --eyes=<stereoscopic eyes>, -y <stereoscopic eyes>\n"
@@ -409,20 +422,6 @@ static Material* loadMaterialFromFile(Engine* engine, const char* path) {
     return material;
 }
 
-static bool parseFloatArgument(std::string const& arg, float* out) {
-    try {
-        size_t consumed = 0;
-        float const value = std::stof(arg, &consumed);
-        if (consumed != arg.size()) {
-            return false;
-        }
-        *out = value;
-        return true;
-    } catch (...) {
-        return false;
-    }
-}
-
 // Advanced: Apply per-pixel foveation using a screen-space shader effect
 // This reduces shading quality in the periphery (optional, more aggressive)
 static void createFoveationQualityOverlay(Engine* engine, Scene* scene, App& app,
@@ -442,8 +441,8 @@ static void createFoveationOverlay(Engine* engine, Scene* scene, App& app) {
     auto mi = material->createInstance();
 
     mi->setParameter("mouseUv", float2{ app.mouseUvX, app.mouseUvY });
-    mi->setParameter("innerRadius", app.foveationConfig.fovealRadius);
-    mi->setParameter("outerRadius", app.foveationConfig.peripheralRadius);
+    mi->setParameter("innerRadius", 0.12f);
+    mi->setParameter("outerRadius", 0.35f);
 
     auto& em = EntityManager::get();
     Entity e = em.create();
@@ -468,14 +467,6 @@ static void createFoveationOverlay(Engine* engine, Scene* scene, App& app) {
 }
 
 static int handleCommandLineArguments(int argc, char* argv[], App* app) {
-    enum {
-        OPT_FOVEATION = 1000,
-        OPT_NO_FOVEATION,
-        OPT_FOVEAL_RADIUS,
-        OPT_PERIPHERAL_RADIUS,
-        OPT_TRANSITION_KEEP,
-        OPT_OUTER_KEEP,
-    };
     static constexpr const char* OPTSTR = "ha:f:i:usc:rt:y:b:evg:dw:";
     static const utils::getopt::option OPTIONS[] = {
         { "help",              utils::getopt::no_argument,          nullptr, 'h' },
@@ -494,12 +485,15 @@ static int handleCommandLineArguments(int argc, char* argv[], App* app) {
         { "vulkan-gpu-hint",   utils::getopt::required_argument,    nullptr, 'g' },
         { "screenshot-as-ppm", utils::getopt::no_argument,          nullptr, 'd' },
         { "webgpu-backend",    utils::getopt::required_argument,    nullptr, 'w' },
-        { "foveation",         utils::getopt::no_argument,          nullptr, OPT_FOVEATION },
-        { "no-foveation",      utils::getopt::no_argument,          nullptr, OPT_NO_FOVEATION },
-        { "foveal-radius",     utils::getopt::required_argument,    nullptr, OPT_FOVEAL_RADIUS },
-        { "peripheral-radius", utils::getopt::required_argument,    nullptr, OPT_PERIPHERAL_RADIUS },
-        { "transition-keep",   utils::getopt::required_argument,    nullptr, OPT_TRANSITION_KEEP },
-        { "outer-keep",        utils::getopt::required_argument,    nullptr, OPT_OUTER_KEEP },
+        { "foveation",         utils::getopt::no_argument,          nullptr, 'F' },
+        { "no-foveation",      utils::getopt::no_argument,          nullptr, 'N' },
+        { "lock-fovea-center", utils::getopt::no_argument,          nullptr, 'z' },
+        { "hide-left-panel",   utils::getopt::no_argument,          nullptr, 'p' },
+        { "draw-fovea-circle", utils::getopt::no_argument,          nullptr, 'Z' },
+        { "foveal-radius",     utils::getopt::required_argument,    nullptr, 'R' },
+        { "peripheral-radius", utils::getopt::required_argument,    nullptr, 'P' },
+        { "transition-keep",   utils::getopt::required_argument,    nullptr, 'T' },
+        { "outer-keep",        utils::getopt::required_argument,    nullptr, 'O' },
         { nullptr, 0, nullptr, 0 }
     };
     int opt;
@@ -550,6 +544,41 @@ static int handleCommandLineArguments(int argc, char* argv[], App* app) {
             case 'e':
                 app->config.headless = true;
                 break;
+            case 'F':
+                app->foveationConfig.enabled = true;
+                break;
+            case 'N':
+                app->foveationConfig.enabled = false;
+                break;
+            case 'z':
+                app->foveationConfig.lockToCenter = true;
+                break;
+            case 'p':
+                app->hideLeftPanel = true;
+                break;
+            case 'Z':
+                app->showFoveaCircle = true;
+                break;
+            case 'R':
+                try {
+                    app->foveationConfig.fovealRadius = std::stof(arg);
+                } catch (...) { }
+                break;
+            case 'P':
+                try {
+                    app->foveationConfig.peripheralRadius = std::stof(arg);
+                } catch (...) { }
+                break;
+            case 'T':
+                try {
+                    app->foveationConfig.transitionKeep = std::stof(arg);
+                } catch (...) { }
+                break;
+            case 'O':
+                try {
+                    app->foveationConfig.outerKeep = std::stof(arg);
+                } catch (...) { }
+                break;
             case 'i':
                 app->config.iblDirectory = arg;
                 break;
@@ -583,48 +612,6 @@ static int handleCommandLineArguments(int argc, char* argv[], App* app) {
             }
             case 'w': {
                 app->config.forcedWebGPUBackend = samples::parseArgumentsForBackend(arg);
-                break;
-            }
-            case OPT_FOVEATION:
-                app->foveationConfig.enabled = true;
-                break;
-            case OPT_NO_FOVEATION:
-                app->foveationConfig.enabled = false;
-                break;
-            case OPT_FOVEAL_RADIUS: {
-                float value = app->foveationConfig.fovealRadius;
-                if (parseFloatArgument(arg, &value)) {
-                    app->foveationConfig.fovealRadius = value;
-                } else {
-                    std::cerr << "Invalid foveal radius: " << arg << std::endl;
-                }
-                break;
-            }
-            case OPT_PERIPHERAL_RADIUS: {
-                float value = app->foveationConfig.peripheralRadius;
-                if (parseFloatArgument(arg, &value)) {
-                    app->foveationConfig.peripheralRadius = value;
-                } else {
-                    std::cerr << "Invalid peripheral radius: " << arg << std::endl;
-                }
-                break;
-            }
-            case OPT_TRANSITION_KEEP: {
-                float value = app->foveationConfig.transitionKeep;
-                if (parseFloatArgument(arg, &value)) {
-                    app->foveationConfig.transitionKeep = value;
-                } else {
-                    std::cerr << "Invalid transition keep: " << arg << std::endl;
-                }
-                break;
-            }
-            case OPT_OUTER_KEEP: {
-                float value = app->foveationConfig.outerKeep;
-                if (parseFloatArgument(arg, &value)) {
-                    app->foveationConfig.outerKeep = value;
-                } else {
-                    std::cerr << "Invalid outer keep: " << arg << std::endl;
-                }
                 break;
             }
         }
@@ -1041,7 +1028,7 @@ int main(int argc, char** argv) {
     auto setup = [&](Engine* engine, View* view, Scene* scene) {
         app.engine = engine;
         app.names = new NameComponentManager(EntityManager::get());
-        app.viewer = new ViewerGui(engine, scene, view, 410);
+        app.viewer = new ViewerGui(engine, scene, view, app.hideLeftPanel ? 0 : 410);
         app.viewer->getSettings().viewer.autoScaleEnabled = !app.actualSize;
 
         engine->enableAccurateTranslations();
@@ -1161,23 +1148,53 @@ int main(int argc, char** argv) {
             app.mouseUvX = foveationUvX;
             app.mouseUvY = foveationUvY;
 
+            float2 const fovealCenter = app.foveationConfig.lockToCenter
+                    ? float2{ 0.5f, 0.5f }
+                    : float2{ foveationUvX, foveationUvY };
+
             FoveatedRenderingOptions options;
             options.enabled = app.foveationConfig.enabled;
             options.fovealRadius = app.foveationConfig.fovealRadius;
             options.peripheralRadius = app.foveationConfig.peripheralRadius;
             options.transitionKeep = app.foveationConfig.transitionKeep;
             options.outerKeep = app.foveationConfig.outerKeep;
-            options.fovealCenter = { foveationUvX, foveationUvY };
+            options.fovealCenter = fovealCenter;
             view->setFoveatedRenderingOptions(options);
 
             if (app.scene.foveationMaterialInstance) {
                 app.scene.foveationMaterialInstance->setParameter(
-                    "mouseUv", float2{ foveationUvX, foveationUvY });
+                    "mouseUv", fovealCenter);
                 // Update foveal/peripheral zone radii from config
                 app.scene.foveationMaterialInstance->setParameter(
                     "innerRadius", app.foveationConfig.fovealRadius);
                 app.scene.foveationMaterialInstance->setParameter(
                     "outerRadius", app.foveationConfig.peripheralRadius);
+            }
+
+            // Optionally draw a circle around the applied foveal center for debugging.
+            if (app.showFoveaCircle) {
+                ImDrawList* dl = ImGui::GetForegroundDrawList();
+                ImGuiIO& io = ImGui::GetIO();
+                float scaleX = io.DisplayFramebufferScale.x;
+                float scaleY = io.DisplayFramebufferScale.y;
+                // Convert the normalized foveal center into ImGui screen coordinates.
+                // This stays tied to the rendered viewport and does not depend on the sidebar.
+                ImVec2 center_pt(
+                        (vp.left + fovealCenter.x * float(vp.width)) / scaleX,
+                        (vp.bottom + (1.0f - fovealCenter.y) * float(vp.height)) / scaleY);
+                float radius_points = 30.0f;
+                dl->AddCircle(center_pt, radius_points, IM_COL32(255, 0, 0, 200), 32, 2.0f);
+                
+                static int circleDbgCounter = 0;
+                if (++circleDbgCounter % 60 == 0) {
+                    std::cout << "[Circle Debug] fovealCenter=(" << fovealCenter.x << "," << fovealCenter.y << ")"
+                              << " vp.left=" << vp.left << " vp.bottom=" << vp.bottom
+                              << " vp.width=" << vp.width << " vp.height=" << vp.height
+                              << " scaleX=" << scaleX << " scaleY=" << scaleY
+                              << " center_pt=(" << center_pt.x << "," << center_pt.y << ")"
+                              << " displaySize=(" << io.DisplaySize.x << "," << io.DisplaySize.y << ")"
+                              << std::endl;
+                }
             }
 
             static int frameCounter = 0;
@@ -1269,11 +1286,12 @@ int main(int argc, char** argv) {
             if (ImGui::CollapsingHeader("Foveated Rendering")) {
                 ImGui::Indent();
                 ImGui::Checkbox("Enable Foveation", &app.foveationConfig.enabled);
+                ImGui::Checkbox("Lock fovea to center", &app.foveationConfig.lockToCenter);
                 ImGui::SliderFloat("Foveal Radius", &app.foveationConfig.fovealRadius, 0.0f, 0.5f);
                 ImGui::SliderFloat("Peripheral Radius", &app.foveationConfig.peripheralRadius, 0.1f, 1.0f);
                 ImGui::SliderFloat("Transition keep", &app.foveationConfig.transitionKeep, 0.0f, 1.0f);
                 ImGui::SliderFloat("Outer keep", &app.foveationConfig.outerKeep, 0.0f, 1.0f);
-                ImGui::Text("Gaze Position (Mouse): %.3f, %.3f", app.mouseUvX, app.mouseUvY);
+                ImGui::Text("Fovea Center: %.3f, %.3f", fovealCenter.x, fovealCenter.y);
                 ImGui::Unindent();
             }
 

@@ -277,7 +277,7 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
         size_t width, size_t height) {
     mWindowTitle = config.title;
     GazePlayback gazePlayback;
-    bool const gazeLoaded = gazePlayback.load();
+    bool const gazeLoaded = (config.allowGazePlayback ? gazePlayback.load() : false);
     float gazeUvX = 0.5f;
     float gazeUvY = 0.5f;
 
@@ -541,6 +541,7 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
                 }
             }
         } else {
+            // If gaze playback is disabled via config, ensure we do not advertise gaze input.
             mHasGazeInput = false;
         }
 
